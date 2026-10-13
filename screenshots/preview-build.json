@@ -1,0 +1,38 @@
+{
+  "url": "http://127.0.0.1:8081/",
+  "viewports": {
+    "desktop": {
+      "width": 1280,
+      "height": 800,
+      "status": 200,
+      "title": "Frame",
+      "hasCanvas": false,
+      "bodyTextLen": 372,
+      "bodyTextHash": "6a6e3c93c38eec91971c1d123e9baf1c8f729a8559248abf811010960dad318c",
+      "bodyTextPrefix": "FRAME One photo, two posts. Drop a picture and the caption you a",
+      "horizontalOverflow": false,
+      "consoleErrors": [],
+      "pageErrors": [],
+      "screenshot": "/workspace/screenshots/preview-build.png"
+    },
+    "mobile": {
+      "width": 390,
+      "height": 844,
+      "status": 200,
+      "title": "Frame",
+      "hasCanvas": false,
+      "bodyTextLen": 372,
+      "bodyTextHash": "6a6e3c93c38eec91971c1d123e9baf1c8f729a8559248abf811010960dad318c",
+      "bodyTextPrefix": "FRAME One photo, two posts. Drop a picture and the caption you a",
+      "horizontalOverflow": false,
+      "consoleErrors": [],
+      "pageErrors": [],
+      "screenshot": "/workspace/screenshots/preview-build-mobile.png"
+    }
+  },
+  "brandWarnings": [],
+  "authWarnings": [],
+  "verdictFile": "/workspace/screenshots/preview-build.json",
+  "divergesFromBaseline": false,
+  "baselineReasons": []
+}
