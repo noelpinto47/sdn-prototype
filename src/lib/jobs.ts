@@ -94,6 +94,41 @@ function readSuggestions(value: unknown, fallback: string): JobResult {
   };
 }
 
+async function resolveGeneratedImages(result: JobResult, cfg: { url: string; key: string }): Promise<JobResult> {
+  const [feed, story] = await Promise.all(
+    [result.feedImage, result.storyImage].map(async (url) => {
+      if (!url) return null;
+      try {
+        const response = await fetch(url, { method: "HEAD" });
+        return response.ok ? url : null;
+      } catch {
+        return null;
+      }
+    }),
+  );
+  if (feed && story) return result;
+
+  const storage = createClient(cfg.url, cfg.key).storage.from("results");
+  const listed = await storage.list("", {
+    limit: 20,
+    sortBy: { column: "created_at", order: "desc" },
+    search: "generated-",
+  });
+  if (listed.error) throw new Error(`Could not find generated images: ${listed.error.message}`);
+  const images = listed.data
+    .filter((file) => file.name.startsWith("generated-") && /\.(jpe?g|png|webp)$/i.test(file.name))
+    .sort((a, b) => String(b.created_at).localeCompare(String(a.created_at)));
+  if (images.length === 0) return result;
+
+  const publicUrl = (name: string) =>
+    `${cfg.url}/storage/v1/object/public/results/${encodeURIComponent(name)}`;
+  return {
+    ...result,
+    feedImage: feed ?? publicUrl(images[0].name),
+    storyImage: story ?? publicUrl(images[1]?.name ?? images[0].name),
+  };
+}
+
 export async function runJob(uploadDataUrl: string, caption: string): Promise<JobResult> {
   const cfg = config();
   if (!cfg) {
@@ -124,7 +159,8 @@ export async function runJob(uploadDataUrl: string, caption: string): Promise<Jo
     const status = String(row.data.status);
     if (status === "failed") throw new Error(asText(row.data.error_message) || "n8n marked this job as failed.");
     if (["completed", "complete", "done", "success"].includes(status)) {
-      return readSuggestions(row.data.suggestions ?? row.data, caption);
+      const result = readSuggestions(row.data.suggestions ?? row.data, caption);
+      return resolveGeneratedImages(result, cfg);
     }
   }
   throw new Error("Still waiting on n8n. Check that ngrok is running and the Supabase trigger uses that URL.");
