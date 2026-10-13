@@ -14,6 +14,10 @@ const WAIT_MS = 120_000;
 type Suggestions = {
   feed_url?: unknown;
   story_url?: unknown;
+  feed_image?: unknown;
+  story_image?: unknown;
+  image_url?: unknown;
+  output_url?: unknown;
   feed_caption?: unknown;
   story_caption?: unknown;
   poster_urls?: unknown;
@@ -47,6 +51,17 @@ function asList(value: unknown): string[] {
   return value.filter((item): item is string => typeof item === "string" && item.trim().length > 0);
 }
 
+function firstUrl(...values: unknown[]): string | null {
+  for (const value of values) {
+    if (typeof value === "string" && /^https?:\/\//.test(value.trim())) return value.trim();
+    if (Array.isArray(value)) {
+      const nested = firstUrl(...value);
+      if (nested) return nested;
+    }
+  }
+  return null;
+}
+
 function readSuggestions(value: unknown, fallback: string): JobResult {
   let raw: unknown = value;
   if (typeof value === "string") {
@@ -57,11 +72,11 @@ function readSuggestions(value: unknown, fallback: string): JobResult {
     }
   }
   const suggestions = (raw && typeof raw === "object" ? raw : {}) as Suggestions;
-  const posters = asList(suggestions.poster_urls).filter((item) => item.startsWith("http"));
+  const posters = asList(suggestions.poster_urls);
   const captions = asList(suggestions.captions);
   return {
-    feedImage: asText(suggestions.feed_url) || posters[0] || null,
-    storyImage: asText(suggestions.story_url) || posters[1] || posters[0] || null,
+    feedImage: firstUrl(suggestions.feed_url, suggestions.feed_image, posters[0], suggestions.image_url, suggestions.output_url),
+    storyImage: firstUrl(suggestions.story_url, suggestions.story_image, posters[1], posters[0], suggestions.image_url, suggestions.output_url),
     feedCaption: asText(suggestions.feed_caption) || captions[0] || fallback,
     storyCaption: asText(suggestions.story_caption) || captions[1] || captions[0] || fallback,
     note: null,
@@ -93,11 +108,13 @@ export async function runJob(uploadDataUrl: string, caption: string): Promise<Jo
   const started = Date.now();
   while (Date.now() - started < WAIT_MS) {
     await new Promise((resolve) => setTimeout(resolve, 3000));
-    const row = await db.from("photo_jobs").select("status, suggestions, error_message").eq("id", jobId).single();
+    const row = await db.from("photo_jobs").select("*").eq("id", jobId).single();
     if (row.error) throw new Error(row.error.message);
     const status = String(row.data.status);
     if (status === "failed") throw new Error(asText(row.data.error_message) || "n8n marked this job as failed.");
-    if (status === "completed") return readSuggestions(row.data.suggestions, caption);
+    if (["completed", "complete", "done", "success"].includes(status)) {
+      return readSuggestions(row.data.suggestions ?? row.data, caption);
+    }
   }
   throw new Error("Still waiting on n8n. Check that ngrok is running and the Supabase trigger uses that URL.");
 }
