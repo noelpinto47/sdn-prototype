@@ -1,6 +1,6 @@
 import { useRef, useState } from "react";
 import { Copy, Download, ImagePlus, Loader2, RectangleVertical, Square } from "lucide-react";
-import { generateVariants, type StudioResult } from "@/lib/generate";
+import { runJob, type JobResult } from "@/lib/jobs";
 
 type Source = {
   name: string;
@@ -117,7 +117,7 @@ export function Studio() {
   const [caption, setCaption] = useState("");
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [result, setResult] = useState<StudioResult | null>(null);
+  const [result, setResult] = useState<JobResult | null>(null);
 
   async function onFile(file: File | undefined) {
     if (!file) return;
@@ -137,11 +137,8 @@ export function Studio() {
     setBusy(true);
     setError(null);
     try {
-      const next = await generateVariants({
-        data: { imageDataUrl: source.upload, caption },
-      });
+      const next = await runJob(source.upload, caption.trim());
       setResult(next);
-      if (next.note && !next.feedImage && !next.storyImage) setError(next.note);
     } catch (err) {
       setError(err instanceof Error ? err.message : "Could not generate posts.");
     } finally {
@@ -211,12 +208,10 @@ export function Studio() {
             className="inline-flex h-12 items-center justify-center gap-2 rounded-full bg-accent px-5 text-sm font-semibold text-accent-ink disabled:opacity-40"
           >
             {busy ? <Loader2 className="size-4 animate-spin" aria-hidden="true" /> : null}
-            {busy ? "Making both formats" : "Generate similar posts"}
+            {busy ? "Sending to n8n" : "Generate similar posts"}
           </button>
           {error ? <p className="text-sm leading-relaxed text-warn">{error}</p> : null}
-          {result?.note && (result.feedImage || result.storyImage) ? (
-            <p className="text-sm leading-relaxed text-muted">{result.note}</p>
-          ) : null}
+          {result?.note ? <p className="text-sm leading-relaxed text-muted">{result.note}</p> : null}
         </section>
 
         <section className="grid gap-4 sm:grid-cols-2">
