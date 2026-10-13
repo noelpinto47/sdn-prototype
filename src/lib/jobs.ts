@@ -62,15 +62,26 @@ function firstUrl(...values: unknown[]): string | null {
   return null;
 }
 
-function readSuggestions(value: unknown, fallback: string): JobResult {
-  let raw: unknown = value;
-  if (typeof value === "string") {
+function parseSuggestions(value: unknown): unknown {
+  let parsed = value;
+  for (let attempt = 0; attempt < 2 && typeof parsed === "string"; attempt += 1) {
     try {
-      raw = JSON.parse(value);
+      parsed = JSON.parse(parsed);
     } catch {
-      raw = null;
+      const normalized = String(parsed).replace(/\\n/g, "\n").replace(/\\"/g, '"');
+      if (normalized === parsed) break;
+      try {
+        parsed = JSON.parse(normalized);
+      } catch {
+        break;
+      }
     }
   }
+  return parsed;
+}
+
+function readSuggestions(value: unknown, fallback: string): JobResult {
+  const raw = parseSuggestions(value);
   const suggestions = (raw && typeof raw === "object" ? raw : {}) as Suggestions;
   const posters = asList(suggestions.poster_urls);
   const captions = asList(suggestions.captions);
