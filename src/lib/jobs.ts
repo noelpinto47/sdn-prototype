@@ -20,11 +20,12 @@ type Suggestions = {
   captions?: unknown;
 };
 
-function config(): { url: string; key: string } | null {
+function config(): { url: string; key: string; authToken: string } | null {
   const url = import.meta.env.VITE_SUPABASE_URL?.trim();
   const key = import.meta.env.VITE_SUPABASE_ANON_KEY?.trim();
   if (!url || !key) return null;
-  return { url: url.replace(/\/$/, ""), key };
+  const authToken = import.meta.env.VITE_SUPABASE_AUTH_TOKEN?.trim() || key;
+  return { url: url.replace(/\/$/, ""), key, authToken };
 }
 
 function dataUrlToBlob(dataUrl: string): Blob {
@@ -71,7 +72,16 @@ export async function runJob(uploadDataUrl: string, caption: string): Promise<Jo
   if (!cfg) {
     throw new Error("On Vercel, set VITE_SUPABASE_URL and VITE_SUPABASE_ANON_KEY, then redeploy.");
   }
-  const db = createClient(cfg.url, cfg.key);
+  const db = createClient(cfg.url, cfg.key, {
+    // The REST request also needs the JWT used by the working cURL. Keep the
+    // publishable/anon key as the apikey while allowing RLS to evaluate the
+    // same bearer token in the browser.
+    global: {
+      headers: {
+        Authorization: `Bearer ${cfg.authToken}`,
+      },
+    },
+  });
   const path = `uploads/${crypto.randomUUID()}.jpg`;
   const uploaded = await db.storage.from(BUCKET).upload(path, dataUrlToBlob(uploadDataUrl), {
     contentType: "image/jpeg",
