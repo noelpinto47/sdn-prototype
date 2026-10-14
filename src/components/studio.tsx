@@ -42,11 +42,57 @@ function shrinkForUpload(dataUrl: string): Promise<string> {
   });
 }
 
-function download(dataUrl: string, name: string) {
-  const link = document.createElement("a");
-  link.href = dataUrl;
-  link.download = name;
-  link.click();
+async function fetchImageBlob(src: string): Promise<Blob> {
+  const response = await fetch(src);
+  if (!response.ok) throw new Error("Could not load the image.");
+  return response.blob();
+}
+
+async function saveImage(src: string, name: string) {
+  const blob = await fetchImageBlob(src);
+  const url = URL.createObjectURL(blob);
+  try {
+    const link = document.createElement("a");
+    link.href = url;
+    link.download = name;
+    document.body.appendChild(link);
+    link.click();
+    link.remove();
+  } finally {
+    URL.revokeObjectURL(url);
+  }
+}
+
+async function copyImageToClipboard(src: string) {
+  const blob = await fetchImageBlob(src);
+  // Clipboard image writes need png across browsers; convert if the source isn't already.
+  const pngBlob = blob.type === "image/png" ? blob : await toPng(blob);
+  await navigator.clipboard.write([new ClipboardItem({ "image/png": pngBlob })]);
+}
+
+function toPng(blob: Blob): Promise<Blob> {
+  return new Promise((resolve, reject) => {
+    const url = URL.createObjectURL(blob);
+    const image = new Image();
+    image.onload = () => {
+      const canvas = document.createElement("canvas");
+      canvas.width = image.width;
+      canvas.height = image.height;
+      const ctx = canvas.getContext("2d");
+      URL.revokeObjectURL(url);
+      if (!ctx) {
+        reject(new Error("Could not convert this image."));
+        return;
+      }
+      ctx.drawImage(image, 0, 0);
+      canvas.toBlob((result) => (result ? resolve(result) : reject(new Error("Could not convert this image."))), "image/png");
+    };
+    image.onerror = () => {
+      URL.revokeObjectURL(url);
+      reject(new Error("Could not load this image."));
+    };
+    image.src = url;
+  });
 }
 
 function PostCard({
@@ -73,12 +119,35 @@ function PostCard({
   showCaption?: boolean;
 }) {
   const [copied, setCopied] = useState(false);
+  const [busyAction, setBusyAction] = useState<"copy" | "save" | null>(null);
+  const [actionError, setActionError] = useState<string | null>(null);
 
-  async function copyCaption() {
-    if (!caption) return;
-    await navigator.clipboard.writeText(caption);
-    setCopied(true);
-    window.setTimeout(() => setCopied(false), 1400);
+  async function handleCopyImage() {
+    if (!image || busyAction) return;
+    setActionError(null);
+    setBusyAction("copy");
+    try {
+      await copyImageToClipboard(image);
+      setCopied(true);
+      window.setTimeout(() => setCopied(false), 1400);
+    } catch {
+      setActionError("Could not copy this image.");
+    } finally {
+      setBusyAction(null);
+    }
+  }
+
+  async function handleSaveImage() {
+    if (!image || busyAction) return;
+    setActionError(null);
+    setBusyAction("save");
+    try {
+      await saveImage(image, fileName);
+    } catch {
+      setActionError("Could not download this image.");
+    } finally {
+      setBusyAction(null);
+    }
   }
 
   return (
@@ -94,7 +163,7 @@ function PostCard({
         {image ? (
           <img src={image} alt="" className="h-full w-full object-cover" />
         ) : (
-          <div className="flex h-full items-center justify-center px-4 text-center text-sm text-muted">Start generating!</div>
+          <div className="flex h-full items-center justify-center px-4 text-center text-sm text-muted">Waiting for a photo</div>
         )}
       </div>
       {showCaption && editableCaption ? (
@@ -105,31 +174,32 @@ function PostCard({
           rows={3}
           className="min-h-20 resize-none rounded-lg border border-line bg-paper px-3 py-2 text-sm leading-relaxed text-ink outline-none"
         />
+      ) : showCaption ? (
+        <p className="min-h-12 text-sm leading-relaxed text-ink">{caption || "Caption will sit here."}</p>
       ) : null}
-      <div className="flex gap-2">
-        {showCaption ? (
+      {actionError ? <p className="text-xs leading-relaxed text-warn">{actionError}</p> : null}
+      {downloadable ? (
+        <div className="flex gap-2">
           <button
             type="button"
-            onClick={copyCaption}
-            disabled={!caption}
+            onClick={() => void handleCopyImage()}
+            disabled={!image || busyAction !== null}
             className="inline-flex h-11 flex-1 items-center justify-center gap-2 rounded-full border border-line bg-card text-sm font-medium text-ink disabled:opacity-40"
           >
-            <Copy className="size-4" aria-hidden="true" />
+            {busyAction === "copy" ? <Loader2 className="size-4 animate-spin" aria-hidden="true" /> : <Copy className="size-4" aria-hidden="true" />}
             {copied ? "Copied" : "Copy"}
           </button>
-        ) : null}
-        {downloadable ? (
           <button
             type="button"
-            onClick={() => image && download(image, fileName)}
-            disabled={!image}
+            onClick={() => void handleSaveImage()}
+            disabled={!image || busyAction !== null}
             className="inline-flex h-11 flex-1 items-center justify-center gap-2 rounded-full bg-ink text-sm font-medium text-paper disabled:opacity-40"
           >
-            <Download className="size-4" aria-hidden="true" />
+            {busyAction === "save" ? <Loader2 className="size-4 animate-spin" aria-hidden="true" /> : <Download className="size-4" aria-hidden="true" />}
             Save
           </button>
-        ) : null}
-      </div>
+        </div>
+      ) : null}
     </article>
   );
 }
@@ -139,6 +209,16 @@ const formatOptions: { value: ContentType; label: string; icon: typeof Square }[
   { value: "story", label: "Story", icon: RectangleVertical },
   { value: "video", label: "Video", icon: Video },
 ];
+
+// The output size each format should render at. Feed posts are square;
+// story and video are both tall 9:16. Sent as its own top-level
+// aspect_ratio field (see onGenerate below), matching the
+// photo_jobs.aspect_ratio column — not nested inside GenerationOptions.
+const aspectRatioByFormat: Record<ContentType, string> = {
+  feed: "1:1",
+  story: "9:16",
+  video: "9:16",
+};
 
 // Maps the simple Post / Story / Video choice onto the counts the job API
 // still expects. promptType is fixed since the redesign / keep-structure /
@@ -164,6 +244,7 @@ export function Studio() {
   const [caption, setCaption] = useState("");
   const [contentType, setContentType] = useState<ContentType>("feed");
   const [busy, setBusy] = useState(false);
+  const [progress, setProgress] = useState(0);
   const [error, setError] = useState<string | null>(null);
   const [result, setResult] = useState<JobResult | null>(null);
   const [videoCaption, setVideoCaption] = useState("");
@@ -183,6 +264,22 @@ export function Studio() {
     setSource({ name: file.name, preview, upload });
   }
 
+  useEffect(() => {
+    if (!busy) {
+      setProgress(0);
+      return;
+    }
+    setProgress((prev) => (prev > 0 ? prev : 8));
+    const interval = window.setInterval(() => {
+      setProgress((prev) => {
+        if (prev >= 90) return prev;
+        const remaining = 90 - prev;
+        return Math.min(90, prev + Math.max(1, remaining * 0.1));
+      });
+    }, 400);
+    return () => window.clearInterval(interval);
+  }, [busy]);
+
   function onClear() {
     setSource(null);
     setCaption("");
@@ -199,9 +296,13 @@ export function Studio() {
     setBusy(true);
     setError(null);
     try {
-      const next = await runJob(source.upload, caption.trim(), toGenerationOptions(contentType, customPrompt));
+      const next = await runJob(source.upload, caption.trim(), toGenerationOptions(contentType, customPrompt), {
+        aspect_ratio: aspectRatioByFormat[contentType],
+      });
       setResult(next);
       setVideoCaption(next.videoCaption);
+      setProgress(100);
+      await new Promise((resolve) => window.setTimeout(resolve, 350));
     } catch (err) {
       setError(err instanceof Error ? err.message : "Could not generate the post.");
     } finally {
@@ -317,15 +418,36 @@ export function Studio() {
               />
             </div>
           </div>
-          <button
-            type="button"
-            onClick={() => void onGenerate()}
-            disabled={!source || busy}
-            className="inline-flex h-12 items-center justify-center gap-2 rounded-full bg-emerald-600 px-5 text-sm font-semibold text-white disabled:opacity-40"
-          >
-            {busy ? <Loader2 className="size-4 animate-spin" aria-hidden="true" /> : null}
-            {busy ? "Sending to n8n" : `Generate ${formatLabel}`}
-          </button>
+          <div className="flex gap-2">
+            <button
+              type="button"
+              onClick={onClear}
+              disabled={!source && !result}
+              className="inline-flex h-12 items-center justify-center rounded-full border border-line bg-card px-5 text-sm font-medium text-ink disabled:opacity-40"
+            >
+              Clear
+            </button>
+            <button
+              type="button"
+              onClick={() => void onGenerate()}
+              disabled={!source || busy}
+              className="inline-flex h-12 flex-1 items-center justify-center gap-2 rounded-full bg-emerald-600 px-5 text-sm font-semibold text-white disabled:opacity-40"
+            >
+              {busy ? <Loader2 className="size-4 animate-spin" aria-hidden="true" /> : null}
+              {busy ? `Generating ${formatLabel}…` : `Generate ${formatLabel}`}
+            </button>
+          </div>
+          {busy ? (
+            <div className="flex flex-col gap-1.5">
+              <div className="h-1.5 w-full overflow-hidden rounded-full bg-paper">
+                <div
+                  className="h-full rounded-full bg-emerald-600 transition-[width] duration-300 ease-out"
+                  style={{ width: `${progress}%` }}
+                />
+              </div>
+              <p className="text-xs text-muted">This usually takes 15–30 seconds.</p>
+            </div>
+          ) : null}
           {error ? <p className="text-sm leading-relaxed text-warn">{error}</p> : null}
           {result?.note ? <p className="text-sm leading-relaxed text-muted">{result.note}</p> : null}
         </section>

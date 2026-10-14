@@ -147,6 +147,7 @@ export async function runJob(
   uploadDataUrl: string,
   caption: string,
   generationOptions: GenerationOptions,
+  { aspect_ratio }: { aspect_ratio: string },
 ): Promise<JobResult> {
   const cfg = config();
   if (!cfg) {
@@ -166,6 +167,7 @@ export async function runJob(
     .insert({
       original_path: path,
       original_url: originalUrl,
+      aspect_ratio,
       prompt: generationOptions.customPrompt,
       caption,
       status: "pending",
