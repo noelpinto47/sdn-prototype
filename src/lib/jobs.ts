@@ -3,9 +3,20 @@ import { createClient } from "@supabase/supabase-js";
 export type JobResult = {
   feedCaption: string;
   storyCaption: string;
+  videoCaption: string;
   feedImage: string | null;
   storyImage: string | null;
   note: string | null;
+};
+
+export type GenerationOptions = {
+  promptType: "redesign" | "keep_structure" | "new_from_reference";
+  customPrompt: string;
+  postCount: number;
+  storyCount: number;
+  videoCount: number;
+  postCaptionCount: number;
+  videoCaptionCount: number;
 };
 
 const BUCKET = "photos";
@@ -20,6 +31,8 @@ type Suggestions = {
   output_url?: unknown;
   feed_caption?: unknown;
   story_caption?: unknown;
+  video_caption?: unknown;
+  video_captions?: unknown;
   poster_urls?: unknown;
   captions?: unknown;
 };
@@ -90,6 +103,7 @@ function readSuggestions(value: unknown, fallback: string): JobResult {
     storyImage: firstUrl(suggestions.story_url, suggestions.story_image, posters[1], posters[0], suggestions.image_url, suggestions.output_url),
     feedCaption: asText(suggestions.feed_caption) || captions[0] || fallback,
     storyCaption: asText(suggestions.story_caption) || captions[1] || captions[0] || fallback,
+    videoCaption: asText(suggestions.video_caption) || asList(suggestions.video_captions)[0] || fallback,
     note: null,
   };
 }
@@ -129,7 +143,11 @@ async function resolveGeneratedImages(result: JobResult, cfg: { url: string; key
   };
 }
 
-export async function runJob(uploadDataUrl: string, caption: string): Promise<JobResult> {
+export async function runJob(
+  uploadDataUrl: string,
+  caption: string,
+  generationOptions: GenerationOptions,
+): Promise<JobResult> {
   const cfg = config();
   if (!cfg) {
     throw new Error("On Vercel, set VITE_SUPABASE_URL and VITE_SUPABASE_PUBLISHABLE_KEY, then redeploy.");
@@ -145,7 +163,14 @@ export async function runJob(uploadDataUrl: string, caption: string): Promise<Jo
   const originalUrl = `${cfg.url}/storage/v1/object/public/${BUCKET}/${path}`;
   const inserted = await db
     .from("photo_jobs")
-    .insert({ original_path: path, original_url: originalUrl, caption, status: "pending" })
+    .insert({
+      original_path: path,
+      original_url: originalUrl,
+      prompt: generationOptions.customPrompt,
+      caption,
+      status: "pending",
+      generation_options: generationOptions,
+    })
     .select("id")
     .single();
   if (inserted.error) throw new Error(inserted.error.message);

@@ -1,5 +1,5 @@
 import { i as __toESM } from "../_runtime.mjs";
-import { q as require_react } from "./@tanstack/react-router+[...].mjs";
+import { K as require_react } from "./@tanstack/react-router+[...].mjs";
 //#region node_modules/lucide-react/dist/esm/shared/src/utils.js
 var import_react = /* @__PURE__ */ __toESM(require_react());
 /**
@@ -205,5 +205,22 @@ var TriangleAlert = createLucideIcon("triangle-alert", [
 		key: "p32p05"
 	}]
 ]);
+/**
+* @license lucide-react v0.510.0 - ISC
+*
+* This source code is licensed under the ISC license.
+* See the LICENSE file in the root directory of this source tree.
+*/
+var Video = createLucideIcon("video", [["path", {
+	d: "m16 13 5.223 3.482a.5.5 0 0 0 .777-.416V7.87a.5.5 0 0 0-.752-.432L16 10.5",
+	key: "ftymec"
+}], ["rect", {
+	x: "2",
+	y: "6",
+	width: "14",
+	height: "12",
+	rx: "2",
+	key: "158x01"
+}]]);
 //#endregion
-export { ImagePlus as a, LoaderCircle as i, Square as n, Download as o, RectangleVertical as r, Copy as s, TriangleAlert as t };
+export { LoaderCircle as a, Copy as c, RectangleVertical as i, TriangleAlert as n, ImagePlus as o, Square as r, Download as s, Video as t };
