@@ -99,9 +99,13 @@ function PostCard({
   label,
   ratio,
   image,
+  caption,
   fileName,
   tall,
+  editableCaption = false,
+  onCaptionChange,
   downloadable = true,
+  showCaption = true,
 }: {
   label: string;
   ratio: string;
@@ -155,13 +159,24 @@ function PostCard({
         </p>
         <span className="text-xs tracking-wide text-muted uppercase">{ratio}</span>
       </div>
-      <div className={tall ? "mx-auto w-full max-w-52 frame-story overflow-hidden rounded-lg bg-paper" : "frame-square overflow-hidden rounded-lg bg-paper"}>
+      <div className={tall ? "mx-auto w-full max-w-52 frame-story overflow-hidden rounded-lg bg-paper p-2.5" : "frame-square overflow-hidden rounded-lg bg-paper p-2.5"}>
         {image ? (
-          <img src={image} alt="" className="h-full w-full object-cover" />
+          <img src={image} alt="" className="h-full w-full rounded-md object-cover" />
         ) : (
           <div className="flex h-full items-center justify-center px-4 text-center text-sm text-muted">Waiting for a photo</div>
         )}
       </div>
+      {showCaption && editableCaption ? (
+        <textarea
+          value={caption}
+          onChange={(event) => onCaptionChange?.(event.target.value)}
+          placeholder="Video caption will sit here."
+          rows={3}
+          className="min-h-20 resize-none rounded-lg border border-line bg-paper px-3 py-2 text-sm leading-relaxed text-ink outline-none"
+        />
+      ) : showCaption ? (
+        <p className="min-h-12 text-sm leading-relaxed text-ink">{caption || "Caption will sit here."}</p>
+      ) : null}
       {actionError ? <p className="text-xs leading-relaxed text-warn">{actionError}</p> : null}
       {downloadable ? (
         <div className="flex gap-2">
@@ -209,8 +224,8 @@ const aspectRatioByFormat: Record<ContentType, string> = {
 // "feed" targets the 1:1 canvas; "story" targets the tall 9:16 canvas and
 // is also reused for video, since video shares that same 9:16 frame.
 const DEFAULT_PROMPTS: Record<"feed" | "story", string> = {
-  feed: "Create a fresh, modern Instagram feed poster variation based on the reference image. Keep the main event or campaign message, key text, date, time, and call-to-action clearly readable. Preserve the original brand colors, logo, and overall visual identity while allowing creative freedom in layout, photo treatment, and composition. Replace or recompose the background/photo with a new relevant scene that fits the theme. Experiment with text placement, graphic shapes, overlays, and hierarchy so the design feels updated but still professional and on-brand. Ensure all important text remains sharp and legible. Square 1:1 format, clean graphic design style, high visual quality, no watermarks.",
-  story: "Create a fresh, modern Instagram Story poster variation based on the reference image. Keep the main event or campaign message, key text, date, time, and call-to-action clearly readable. Preserve the original brand colors, logo, and overall visual identity while allowing creative freedom in layout, photo treatment, and composition. Replace or recompose the background/photo with a new relevant scene that fits the theme. Design for a tall 9:16 canvas: keep the logo and all essential text inside the safe centre area, clear of the very top and bottom of the frame where Instagram's own UI (profile bar, reply field, sticker tray) sits on top of the image. Use bold, large type and strong contrast so the message reads instantly while someone is tapping through stories. Experiment with text placement, graphic shapes, overlays, and hierarchy so the design feels updated but still professional and on-brand. Ensure all important text remains sharp and legible. Vertical 9:16 format, clean graphic design style, high visual quality, no watermarks.",
+  feed: "Create a fresh, modern Instagram feed poster variation based on the reference image. Keep the main event or campaign message, key text, date, time, and call-to-action clearly readable. Preserve the original brand colors, logo, and overall visual identity while allowing creative freedom in layout, photo treatment, and composition. Replace or recompose the background/photo with a new relevant scene that fits the theme. Leave a clear safe margin around all four edges of the canvas — no text, logo, badge, or graphic element should touch, crop against, or extend past the edge of the frame. Experiment with text placement, graphic shapes, overlays, and hierarchy so the design feels updated but still professional and on-brand. Ensure all important text remains sharp, fully within frame, and legible. Square 1:1 format, clean graphic design style, high visual quality, no watermarks.",
+  story: "Create a fresh, modern Instagram Story poster variation based on the reference image. Keep the main event or campaign message, key text, date, time, and call-to-action clearly readable. Preserve the original brand colors, logo, and overall visual identity while allowing creative freedom in layout, photo treatment, and composition. Replace or recompose the background/photo with a new relevant scene that fits the theme. Design for a tall 9:16 canvas: keep the logo and all essential text inside the safe centre area, clear of the very top and bottom of the frame where Instagram's own UI (profile bar, reply field, sticker tray) sits on top of the image, and leave a clear safe margin on the left and right edges too — no text, logo, badge, or graphic element should touch, crop against, or extend past any edge of the frame. Use bold, large type and strong contrast so the message reads instantly while someone is tapping through stories. Experiment with text placement, graphic shapes, overlays, and hierarchy so the design feels updated but still professional and on-brand. Ensure all important text remains sharp, fully within frame, and legible. Vertical 9:16 format, clean graphic design style, high visual quality, no watermarks.",
 };
 
 // A short style nudge appended to the default prompt so repeated runs
@@ -424,7 +439,7 @@ export function Studio() {
               <textarea
                 value={customPrompt}
                 onChange={(event) => setCustomPrompt(event.target.value)}
-                rows={8}
+                rows={3}
                 maxLength={1000}
                 placeholder="Leave blank to use the default SDN poster prompt for this format, with a fresh layout twist each time. Or write your own to override it."
                 className="resize-none rounded-xl border border-line bg-paper px-3 py-3 text-sm font-normal text-ink outline-none"
