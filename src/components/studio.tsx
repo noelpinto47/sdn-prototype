@@ -16,8 +16,8 @@ type ActiveTab = "generate" | "gallery";
 const translations = {
   nl: {
     brand: "Samen Duurzaam Nieuwegein",
-    tabGenerate: "Generate",
-    tabGallery: "Gallery",
+    tabGenerate: "Genereren",
+    tabGallery: "Galerij",
     galleryTitle: "Gegenereerde afbeeldingen",
     gallerySubtitle: "Alle afbeeldingen die in de resultatenopslag zijn opgeslagen.",
     galleryLoading: "Afbeeldingen laden…",
@@ -34,7 +34,7 @@ const translations = {
     formatPost: "Post",
     formatStory: "Story",
     formatVideo: "Video",
-    customPrompt: "Aangepaste prompt",
+    customPrompt: "Aangepaste prompt (optioneel)",
     customPromptPlaceholder: "Laat leeg om de standaard SDN-posterprompt voor dit formaat te gebruiken, met elke keer een nieuwe lay-outtwist. Of schrijf je eigen prompt om deze te overschrijven.",
     clear: "Wissen",
     generate: "Genereer",
@@ -75,7 +75,7 @@ const translations = {
     formatPost: "Post",
     formatStory: "Story",
     formatVideo: "Video",
-    customPrompt: "Custom prompt",
+    customPrompt: "Custom prompt (optional)",
     customPromptPlaceholder: "Leave blank to use the default SDN poster prompt for this format, with a fresh layout twist each time. Or write your own to override it.",
     clear: "Clear",
     generate: "Generate",
