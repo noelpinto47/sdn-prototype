@@ -161,7 +161,7 @@ function PostCard({
       </div>
       <div className={tall ? "mx-auto w-full max-w-52 frame-story overflow-hidden rounded-lg bg-paper p-2.5" : "frame-square overflow-hidden rounded-lg bg-paper p-2.5"}>
         {image ? (
-          <img src={image} alt="" className="h-full w-full rounded-md object-cover" />
+          <img src={image} alt="" className="h-full w-full rounded-md object-contain" />
         ) : (
           <div className="flex h-full items-center justify-center px-4 text-center text-sm text-muted">Waiting for a photo</div>
         )}
@@ -275,6 +275,7 @@ export function Studio() {
   const [progress, setProgress] = useState(0);
   const [error, setError] = useState<string | null>(null);
   const [result, setResult] = useState<JobResult | null>(null);
+  const [resultFormat, setResultFormat] = useState<ContentType | null>(null);
   const [videoCaption, setVideoCaption] = useState("");
   const [customPrompt, setCustomPrompt] = useState("");
 
@@ -286,6 +287,7 @@ export function Studio() {
     }
     setError(null);
     setResult(null);
+    setResultFormat(null);
     setVideoCaption("");
     const preview = await readFile(file);
     const upload = await shrinkForUpload(preview);
@@ -313,6 +315,7 @@ export function Studio() {
     setCaption("");
     setContentType("feed");
     setResult(null);
+    setResultFormat(null);
     setVideoCaption("");
     setCustomPrompt("");
     setError(null);
@@ -323,11 +326,19 @@ export function Studio() {
     if (!source || busy) return;
     setBusy(true);
     setError(null);
+    // Clear whatever's currently shown right away, so the canvas goes empty
+    // (with the progress bar) instead of leaving a stale result on screen
+    // while the new one generates.
+    setResult(null);
+    setResultFormat(null);
+    setVideoCaption("");
     try {
+      const generatingFor = contentType;
       const next = await runJob(source.upload, caption.trim(), toGenerationOptions(contentType, customPrompt), {
         aspect_ratio: aspectRatioByFormat[contentType],
       });
       setResult(next);
+      setResultFormat(generatingFor);
       setVideoCaption(next.caption);
       setProgress(100);
       await new Promise((resolve) => window.setTimeout(resolve, 350));
@@ -338,9 +349,13 @@ export function Studio() {
     }
   }
 
-  const resultImage = result?.imageUrl ?? null;
-  const resultCaption = result?.caption ?? caption;
-  const defaultVideoCaption = result?.caption ?? "";
+  // Only show a result under the format it was actually generated for —
+  // switching tabs without regenerating should never show a different
+  // format's image.
+  const matchesCurrentFormat = resultFormat === contentType;
+  const resultImage = matchesCurrentFormat ? (result?.imageUrl ?? null) : null;
+  const resultCaption = matchesCurrentFormat ? (result?.caption ?? caption) : caption;
+  const defaultVideoCaption = matchesCurrentFormat ? (result?.caption ?? "") : "";
   useEffect(() => {
     if (!videoCaption && defaultVideoCaption) setVideoCaption(defaultVideoCaption);
   }, [defaultVideoCaption, videoCaption]);
