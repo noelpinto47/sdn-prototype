@@ -230,13 +230,28 @@ function PostCard({
         </p>
         <span className="text-xs tracking-wide text-muted uppercase">{ratio}</span>
       </div>
-      <div className={tall ? "mx-auto w-full max-w-52 frame-story overflow-hidden rounded-lg bg-paper p-2.5" : "frame-square overflow-hidden rounded-lg bg-paper p-2.5"}>
+
+      {/* Frame now sizes to the image. Placeholder keeps a sensible aspect ratio only when empty. */}
+      <div
+        className={
+          tall
+            ? "mx-auto w-full max-w-52 overflow-hidden rounded-lg bg-paper p-2.5"
+            : "w-full overflow-hidden rounded-lg bg-paper p-2.5"
+        }
+      >
         {image ? (
-          <img src={image} alt="" className="h-full w-full rounded-md object-contain" />
+          <img src={image} alt="" className="block w-full h-auto rounded-md" />
         ) : (
-          <div className="flex h-full items-center justify-center px-4 text-center text-sm text-muted">{t.waitingPhoto}</div>
+          <div
+            className={`flex items-center justify-center px-4 text-center text-sm text-muted ${
+              tall ? "aspect-[9/16]" : "aspect-square"
+            }`}
+          >
+            {t.waitingPhoto}
+          </div>
         )}
       </div>
+
       {showCaption && editableCaption ? (
         <textarea
           value={caption}
@@ -248,7 +263,9 @@ function PostCard({
       ) : showCaption ? (
         <p className="min-h-12 text-sm leading-relaxed text-ink">{caption}</p>
       ) : null}
+
       {actionError ? <p className="text-xs leading-relaxed text-warn">{actionError}</p> : null}
+
       {downloadable ? (
         <div className="flex gap-2">
           <button
@@ -288,8 +305,8 @@ const aspectRatioByFormat: Record<ContentType, string> = {
 };
 
 const DEFAULT_PROMPTS: Record<"feed" | "story", string> = {
-  feed: "Create a fresh, modern Instagram feed poster variation based on the reference image. Keep the main event or campaign message, key text, date, time, and call-to-action clearly readable. Preserve the original brand colors, logo, and overall visual identity while allowing creative freedom in layout, photo treatment, and composition. Replace or recompose the background/photo with a new relevant scene that fits the theme. Leave a clear safe margin around all four edges of the canvas — no text, logo, badge, or graphic element should touch, crop against, or extend past the edge of the frame. Experiment with text placement, graphic shapes, overlays, and hierarchy so the design feels updated but still professional and on-brand. Ensure all important text remains sharp, fully within frame, and legible. Square 1:1 format, clean graphic design style, high visual quality, no watermarks.",
-  story: "Create a fresh, modern Instagram Story poster variation based on the reference image. Keep the main event or campaign message, key text, date, time, and call-to-action clearly readable. Preserve the original brand colors, logo, and overall visual identity while allowing creative freedom in layout, photo treatment, and composition. Replace or recompose the background/photo with a new relevant scene that fits the theme. Design for a tall 9:16 canvas: keep the logo and all essential text inside the safe centre area, clear of the very top and bottom of the frame where Instagram's own UI (profile bar, reply field, sticker tray) sits on top of the image, and leave a clear safe margin on the left and right edges too — no text, logo, badge, or graphic element should touch, crop against, or extend past any edge of the frame. Use bold, large type and strong contrast so the message reads instantly while someone is tapping through stories. Experiment with text placement, graphic shapes, overlays, and hierarchy so the design feels updated but still professional and on-brand. Ensure all important text remains sharp, fully within frame, and legible. Vertical 9:16 format, clean graphic design style, high visual quality, no watermarks.",
+  feed: "Create a distinctly redesigned, contemporary Instagram feed poster using the reference image as a source of information and brand identity, NOT as a layout template. The result must look like a genuinely new creative concept, not a lightly edited version of the original. Preserve the campaign's core message, factual details, event name, date, time, call-to-action, logo, and recognizable brand colors. Treat the original composition as disposable: substantially change the layout, text hierarchy, alignment, placement of elements, typography, background imagery, shapes, and use of negative space. Introduce a fresh, theme-relevant photographic scene or a new visual concept that communicates the same campaign in a different way. Avoid copying the original's exact arrangement, headline position, image crop, background, decorative elements, or text blocks. Choose a noticeably different composition for each generation, experimenting with editorial-style layouts, bold typographic treatments, asymmetric grids, layered shapes, restrained color blocking, or creative photo-text integration. Keep the design polished, modern, accessible, and consistent with the organization's visual identity. Reproduce important text accurately and keep it sharp, readable, correctly spelled, and fully within the canvas. Preserve the original logo without inventing, distorting, or duplicating it. Maintain generous, consistent safe margins on every edge; no text, logo, badge, or essential graphic may touch or cross the frame. Do not invent dates, claims, statistics, event details, or other factual content. Avoid generic templates, unnecessary clutter, excessive decoration, watermarks, and mockup presentations. Prioritize originality of composition while preserving the campaign's meaning and brand recognition.",
+  story: "Create a bold, contemporary Instagram Story poster using the reference image as a source of campaign information and brand identity, NOT as a layout template. The result should feel like a new creative direction rather than a minor edit or near-duplicate of the original. Preserve the campaign's core message, event name, key text, date, time, call-to-action, original logo, and recognizable brand colors. Treat the original composition as disposable: redesign the visual hierarchy, typography, text placement, image treatment, background, alignment, spacing, and decorative elements. Introduce a fresh, relevant photographic scene or a substantially different visual concept that communicates the same campaign. Do not reuse the original's exact background, photo crop, headline placement, text blocks, graphic arrangement, or decorative motifs. Explore distinctive compositions such as oversized editorial typography, asymmetrical layouts, layered photographic imagery, bold color panels, geometric framing, striking negative space, or integrated text-and-image treatments. Choose a different creative approach for each generation instead of defaulting to the same poster template. Make the main message immediately understandable at a glance, with large, high-contrast typography and a clear visual hierarchy. Keep all essential content within a central safe area, away from the top and bottom regions where Instagram interface elements may obscure it. Maintain generous margins on every edge; no text, logo, badge, or essential graphic should touch, cross, or be clipped by the canvas boundaries. Reproduce important text accurately, with correct spelling and legible letterforms. Preserve the original logo faithfully without inventing, distorting, or duplicating it. Keep the result polished, accessible, professional, and recognizable as part of the same organization's visual identity while making the composition unmistakably new. Do not invent campaign facts, dates, statistics, or event details. Avoid generic templates, clutter, unnecessary decoration, mockup presentations, and watermarks. Prioritize creative originality, strong visual storytelling, and clear communication.",
 };
 
 const VARIATION_HINTS = [
