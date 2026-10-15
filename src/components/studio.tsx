@@ -24,7 +24,6 @@ const translations = {
     galleryEmpty: "Er zijn nog geen gegenereerde afbeeldingen.",
     galleryError: "Kon de galerij niet laden.",
     galleryRefresh: "Vernieuwen",
-    galleryOpen: "Open afbeelding",
     title: "Maak van één foto een kant-en-klare update.",
     subtitle: "Voeg een foto van een SDN-initiatief toe, kies een formaat en krijg iets dat je direct op sociale media kunt plaatsen.",
     sectionPhoto: "01 · Foto",
@@ -66,7 +65,6 @@ const translations = {
     galleryEmpty: "There are no generated images yet.",
     galleryError: "Could not load the gallery.",
     galleryRefresh: "Refresh",
-    galleryOpen: "Open image",
     title: "Turn one photo into a ready-to-post update.",
     subtitle: "Add a photo from an SDN initiative, pick a format, and get something you can post straight to social media.",
     sectionPhoto: "01 · Photo",
@@ -307,6 +305,91 @@ function PostCard({
           </button>
         </div>
       ) : null}
+    </article>
+  );
+}
+
+function GalleryCard({
+  image,
+  lang,
+  t,
+}: {
+  image: GeneratedImage;
+  lang: Lang;
+  t: typeof translations.nl;
+}) {
+  const [copied, setCopied] = useState(false);
+  const [busyAction, setBusyAction] = useState<"copy" | "save" | null>(null);
+  const [actionError, setActionError] = useState<string | null>(null);
+
+  async function handleCopy() {
+    if (busyAction) return;
+    setActionError(null);
+    setBusyAction("copy");
+    try {
+      await copyImageToClipboard(image.url);
+      setCopied(true);
+      window.setTimeout(() => setCopied(false), 1400);
+    } catch {
+      setActionError(t.errorCopy);
+    } finally {
+      setBusyAction(null);
+    }
+  }
+
+  async function handleDownload() {
+    if (busyAction) return;
+    setActionError(null);
+    setBusyAction("save");
+    try {
+      await saveImage(image.url, image.name);
+    } catch {
+      setActionError(t.errorDownload);
+    } finally {
+      setBusyAction(null);
+    }
+  }
+
+  return (
+    <article className="flex min-w-0 flex-col gap-3 rounded-card border border-line bg-card p-3">
+      <img
+        src={image.url}
+        alt={image.name}
+        loading="lazy"
+        className="aspect-[4/3] w-full rounded-lg bg-paper object-contain"
+      />
+      <div className="min-w-0">
+        <p className="truncate text-sm font-medium text-ink" title={image.name}>{image.name}</p>
+        {image.createdAt ? (
+          <p className="mt-1 text-xs text-muted">
+            {new Date(image.createdAt).toLocaleString(lang === "nl" ? "nl-NL" : "en-GB", {
+              dateStyle: "medium",
+              timeStyle: "short",
+            })}
+          </p>
+        ) : null}
+      </div>
+      {actionError ? <p role="alert" className="text-xs leading-relaxed text-warn">{actionError}</p> : null}
+      <div className="flex gap-2">
+        <button
+          type="button"
+          onClick={() => void handleCopy()}
+          disabled={busyAction !== null}
+          className="inline-flex h-11 flex-1 items-center justify-center gap-2 rounded-full border border-line bg-card text-sm font-medium text-ink disabled:opacity-40"
+        >
+          {busyAction === "copy" ? <Loader2 className="size-4 animate-spin" aria-hidden="true" /> : <Copy className="size-4" aria-hidden="true" />}
+          {copied ? t.copied : t.copy}
+        </button>
+        <button
+          type="button"
+          onClick={() => void handleDownload()}
+          disabled={busyAction !== null}
+          className="inline-flex h-11 flex-1 items-center justify-center gap-2 rounded-full bg-ink text-sm font-medium text-paper disabled:opacity-40"
+        >
+          {busyAction === "save" ? <Loader2 className="size-4 animate-spin" aria-hidden="true" /> : <Download className="size-4" aria-hidden="true" />}
+          {t.save}
+        </button>
+      </div>
     </article>
   );
 }
@@ -738,35 +821,7 @@ export function Studio() {
           ) : (
             <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
               {galleryImages.map((image) => (
-                <article key={image.path} className="flex min-w-0 flex-col gap-3 rounded-card border border-line bg-card p-3">
-                  <a href={image.url} target="_blank" rel="noreferrer" aria-label={`${t.galleryOpen}: ${image.name}`}>
-                    <img
-                      src={image.url}
-                      alt={image.name}
-                      loading="lazy"
-                      className="aspect-[4/3] w-full rounded-lg bg-paper object-contain"
-                    />
-                  </a>
-                  <div className="min-w-0">
-                    <p className="truncate text-sm font-medium text-ink" title={image.name}>{image.name}</p>
-                    {image.createdAt ? (
-                      <p className="mt-1 text-xs text-muted">
-                        {new Date(image.createdAt).toLocaleString(lang === "nl" ? "nl-NL" : "en-GB", {
-                          dateStyle: "medium",
-                          timeStyle: "short",
-                        })}
-                      </p>
-                    ) : null}
-                  </div>
-                  <a
-                    href={image.url}
-                    target="_blank"
-                    rel="noreferrer"
-                    className="inline-flex h-10 items-center justify-center rounded-full border border-line text-sm font-medium text-ink hover:bg-paper"
-                  >
-                    {t.galleryOpen}
-                  </a>
-                </article>
+                <GalleryCard key={image.path} image={image} lang={lang} t={t} />
               ))}
             </div>
           )}
