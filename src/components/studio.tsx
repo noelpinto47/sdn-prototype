@@ -175,7 +175,7 @@ function PostCard({
           className="min-h-20 resize-none rounded-lg border border-line bg-paper px-3 py-2 text-sm leading-relaxed text-ink outline-none"
         />
       ) : showCaption ? (
-        <p className="min-h-12 text-sm leading-relaxed text-ink">{caption || "Caption will sit here."}</p>
+        <p className="min-h-12 text-sm leading-relaxed text-ink">{caption}</p>
       ) : null}
       {actionError ? <p className="text-xs leading-relaxed text-warn">{actionError}</p> : null}
       {downloadable ? (
@@ -439,7 +439,7 @@ export function Studio() {
               <textarea
                 value={customPrompt}
                 onChange={(event) => setCustomPrompt(event.target.value)}
-                rows={3}
+                rows={8}
                 maxLength={1000}
                 placeholder="Leave blank to use the default SDN poster prompt for this format, with a fresh layout twist each time. Or write your own to override it."
                 className="resize-none rounded-xl border border-line bg-paper px-3 py-3 text-sm font-normal text-ink outline-none"
