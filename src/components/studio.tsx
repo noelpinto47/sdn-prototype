@@ -328,7 +328,7 @@ export function Studio() {
         aspect_ratio: aspectRatioByFormat[contentType],
       });
       setResult(next);
-      setVideoCaption(next.videoCaption);
+      setVideoCaption(next.caption);
       setProgress(100);
       await new Promise((resolve) => window.setTimeout(resolve, 350));
     } catch (err) {
@@ -338,10 +338,9 @@ export function Studio() {
     }
   }
 
-  const feedImage = result?.feedImage ?? null;
-  const storyImage = result?.storyImage ?? null;
-  const feedCaption = result?.feedCaption ?? caption;
-  const defaultVideoCaption = result?.videoCaption ?? "";
+  const resultImage = result?.imageUrl ?? null;
+  const resultCaption = result?.caption ?? caption;
+  const defaultVideoCaption = result?.caption ?? "";
   useEffect(() => {
     if (!videoCaption && defaultVideoCaption) setVideoCaption(defaultVideoCaption);
   }, [defaultVideoCaption, videoCaption]);
@@ -439,7 +438,7 @@ export function Studio() {
               <textarea
                 value={customPrompt}
                 onChange={(event) => setCustomPrompt(event.target.value)}
-                rows={8}
+                rows={3}
                 maxLength={1000}
                 placeholder="Leave blank to use the default SDN poster prompt for this format, with a fresh layout twist each time. Or write your own to override it."
                 className="resize-none rounded-xl border border-line bg-paper px-3 py-3 text-sm font-normal text-ink outline-none"
@@ -486,13 +485,13 @@ export function Studio() {
             <p className="mt-1 text-sm text-muted">Your generated update will appear here.</p>
           </div>
           {contentType === "feed" ? (
-            <PostCard label="Feed post" ratio="1:1" image={feedImage} caption={feedCaption} fileName="sdn-feed-post.jpg" />
+            <PostCard label="Feed post" ratio="1:1" image={resultImage} caption={resultCaption} fileName="sdn-feed-post.jpg" />
           ) : null}
           {contentType === "story" ? (
             <PostCard
               label="Story"
               ratio="9:16"
-              image={storyImage}
+              image={resultImage}
               caption=""
               fileName="sdn-story.jpg"
               tall
@@ -503,7 +502,7 @@ export function Studio() {
             <PostCard
               label="Portrait video"
               ratio="9:16"
-              image={result?.feedImage ?? null}
+              image={resultImage}
               caption={videoCaption}
               fileName="sdn-video.mp4"
               tall

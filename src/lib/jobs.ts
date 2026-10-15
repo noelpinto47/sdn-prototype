@@ -1,11 +1,8 @@
 import { createClient } from "@supabase/supabase-js";
 
 export type JobResult = {
-  feedCaption: string;
-  storyCaption: string;
-  videoCaption: string;
-  feedImage: string | null;
-  storyImage: string | null;
+  caption: string;
+  imageUrl: string | null;
   note: string | null;
 };
 
@@ -23,17 +20,19 @@ const BUCKET = "photos";
 const WAIT_MS = 120_000;
 
 type Suggestions = {
-  feed_url?: unknown;
-  story_url?: unknown;
-  feed_image?: unknown;
-  story_image?: unknown;
   image_url?: unknown;
   output_url?: unknown;
+  feed_url?: unknown;
+  story_url?: unknown;
+  video_url?: unknown;
+  feed_image?: unknown;
+  story_image?: unknown;
+  poster_urls?: unknown;
+  caption?: unknown;
   feed_caption?: unknown;
   story_caption?: unknown;
   video_caption?: unknown;
   video_captions?: unknown;
-  poster_urls?: unknown;
   captions?: unknown;
 };
 
@@ -99,28 +98,43 @@ function readSuggestions(value: unknown, fallback: string): JobResult {
   const posters = asList(suggestions.poster_urls);
   const captions = asList(suggestions.captions);
   return {
-    feedImage: firstUrl(suggestions.feed_url, suggestions.feed_image, posters[0], suggestions.image_url, suggestions.output_url),
-    storyImage: firstUrl(suggestions.story_url, suggestions.story_image, posters[1], posters[0], suggestions.image_url, suggestions.output_url),
-    feedCaption: asText(suggestions.feed_caption) || captions[0] || fallback,
-    storyCaption: asText(suggestions.story_caption) || captions[1] || captions[0] || fallback,
-    videoCaption: asText(suggestions.video_caption) || asList(suggestions.video_captions)[0] || fallback,
+    imageUrl: firstUrl(
+      suggestions.image_url,
+      suggestions.output_url,
+      suggestions.feed_url,
+      suggestions.story_url,
+      suggestions.video_url,
+      suggestions.feed_image,
+      suggestions.story_image,
+      posters[0],
+    ),
+    caption:
+      asText(suggestions.caption) ||
+      asText(suggestions.feed_caption) ||
+      asText(suggestions.story_caption) ||
+      asText(suggestions.video_caption) ||
+      asList(suggestions.video_captions)[0] ||
+      captions[0] ||
+      fallback,
     note: null,
   };
 }
 
-async function resolveGeneratedImages(result: JobResult, cfg: { url: string; key: string }): Promise<JobResult> {
-  const [feed, story] = await Promise.all(
-    [result.feedImage, result.storyImage].map(async (url) => {
-      if (!url) return null;
-      try {
-        const response = await fetch(url, { method: "HEAD" });
-        return response.ok ? url : null;
-      } catch {
-        return null;
-      }
-    }),
-  );
-  if (feed && story) return result;
+async function isReachable(url: string): Promise<boolean> {
+  try {
+    const response = await fetch(url, { method: "HEAD" });
+    return response.ok;
+  } catch {
+    return false;
+  }
+}
+
+async function resolveGeneratedImage(
+  result: JobResult,
+  cfg: { url: string; key: string },
+  generatedAfter: string,
+): Promise<JobResult> {
+  if (result.imageUrl && (await isReachable(result.imageUrl))) return result;
 
   const storage = createClient(cfg.url, cfg.key).storage.from("results");
   const listed = await storage.list("", {
@@ -129,17 +143,18 @@ async function resolveGeneratedImages(result: JobResult, cfg: { url: string; key
     search: "generated-",
   });
   if (listed.error) throw new Error(`Could not find generated images: ${listed.error.message}`);
-  const images = listed.data
+  // A file is only a valid fallback if it was created after THIS job
+  // started — otherwise we'd risk picking up a previous job's output,
+  // which is exactly how a story request could end up showing a feed image.
+  const newest = listed.data
     .filter((file) => file.name.startsWith("generated-") && /\.(jpe?g|png|webp)$/i.test(file.name))
-    .sort((a, b) => String(b.created_at).localeCompare(String(a.created_at)));
-  if (images.length === 0) return result;
+    .filter((file) => String(file.created_at) > generatedAfter)
+    .sort((a, b) => String(b.created_at).localeCompare(String(a.created_at)))[0];
+  if (!newest) return result;
 
-  const publicUrl = (name: string) =>
-    `${cfg.url}/storage/v1/object/public/results/${encodeURIComponent(name)}`;
   return {
     ...result,
-    feedImage: feed ?? publicUrl(images[0].name),
-    storyImage: story ?? publicUrl(images[1]?.name ?? images[0].name),
+    imageUrl: `${cfg.url}/storage/v1/object/public/results/${encodeURIComponent(newest.name)}`,
   };
 }
 
@@ -153,6 +168,7 @@ export async function runJob(
   if (!cfg) {
     throw new Error("On Vercel, set VITE_SUPABASE_URL and VITE_SUPABASE_PUBLISHABLE_KEY, then redeploy.");
   }
+  const jobStartedAt = new Date().toISOString();
   const db = createClient(cfg.url, cfg.key);
   const path = `uploads/${crypto.randomUUID()}.jpg`;
   const uploaded = await db.storage.from(BUCKET).upload(path, dataUrlToBlob(uploadDataUrl), {
@@ -187,7 +203,7 @@ export async function runJob(
     if (status === "failed") throw new Error(asText(row.data.error_message) || "n8n marked this job as failed.");
     if (["completed", "complete", "done", "success"].includes(status)) {
       const result = readSuggestions(row.data.suggestions ?? row.data, caption);
-      return resolveGeneratedImages(result, cfg);
+      return resolveGeneratedImage(result, cfg, jobStartedAt);
     }
   }
   throw new Error("Still waiting on n8n. Check that ngrok is running and the Supabase trigger uses that URL.");
