@@ -146,11 +146,24 @@ async function resolveGeneratedImage(
   // A file is only a valid fallback if it was created after THIS job
   // started — otherwise we'd risk picking up a previous job's output,
   // which is exactly how a story request could end up showing a feed image.
+  // Compare actual timestamps, not raw strings: Supabase's created_at isn't
+  // guaranteed to use the same ISO format as JS's toISOString() (e.g.
+  // "+00:00" vs "Z", or extra digits of precision), so a plain string ">"
+  // comparison can silently exclude a file that's genuinely newer. A 5s
+  // buffer also absorbs minor clock drift between this browser and Supabase.
+  const cutoffMs = new Date(generatedAfter).getTime() - 5000;
   const newest = listed.data
     .filter((file) => file.name.startsWith("generated-") && /\.(jpe?g|png|webp)$/i.test(file.name))
-    .filter((file) => String(file.created_at) > generatedAfter)
-    .sort((a, b) => String(b.created_at).localeCompare(String(a.created_at)))[0];
-  if (!newest) return result;
+    .filter((file) => {
+      const createdMs = new Date(String(file.created_at)).getTime();
+      return Number.isFinite(createdMs) && createdMs > cutoffMs;
+    })
+    .sort((a, b) => new Date(String(b.created_at)).getTime() - new Date(String(a.created_at)).getTime())[0];
+
+  // If we still can't confirm a working image, don't hand back a stale or
+  // unreachable URL — null renders as "Waiting for a photo" instead of a
+  // broken image icon.
+  if (!newest) return { ...result, imageUrl: null };
 
   return {
     ...result,
