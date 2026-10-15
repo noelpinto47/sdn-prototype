@@ -16,10 +16,8 @@ export type GenerationOptions = {
   videoCaptionCount: number;
 };
 
-const BUCKET = "photos";
-const WAIT_MS = 120_000;
-
-type Suggestions = {
+type ContentFormat = "feed" | "story" | "video";
+type Suggestions = Record<string, unknown> & {
   image_url?: unknown;
   output_url?: unknown;
   feed_url?: unknown;
@@ -27,6 +25,7 @@ type Suggestions = {
   video_url?: unknown;
   feed_image?: unknown;
   story_image?: unknown;
+  video_image?: unknown;
   poster_urls?: unknown;
   caption?: unknown;
   feed_caption?: unknown;
@@ -36,167 +35,173 @@ type Suggestions = {
   captions?: unknown;
 };
 
-function config(): { url: string; key: string } | null {
-  const url = import.meta.env.VITE_SUPABASE_URL?.trim();
-  const key =
-    import.meta.env.VITE_SUPABASE_PUBLISHABLE_KEY?.trim() ||
-    import.meta.env.VITE_SUPABASE_ANON_KEY?.trim();
-  if (!url || !key) return null;
+type JobRow = {
+  id: string;
+  status: string;
+  suggestions?: unknown;
+  error_message?: unknown;
+};
+
+const UPLOAD_BUCKET = "photos";
+const POLL_INTERVAL_MS = 2_000;
+const WAIT_MS = 180_000;
+
+function getConfig(): { url: string; key: string } {
+  const env = import.meta.env as Record<string, string | undefined>;
+  const url = env.VITE_SUPABASE_URL?.trim();
+  const key = env.VITE_SUPABASE_ANON_KEY?.trim();
+
+  if (!url || !key) {
+    throw new Error(
+      "Missing Supabase configuration. Set VITE_SUPABASE_URL and VITE_SUPABASE_ANON_KEY in your .env file.",
+    );
+  }
+
   return { url: url.replace(/\/$/, ""), key };
 }
 
 function dataUrlToBlob(dataUrl: string): Blob {
-  const [header, data] = dataUrl.split(",");
-  const mime = /data:(.*?);/.exec(header)?.[1] ?? "image/jpeg";
-  const binary = atob(data);
-  const bytes = new Uint8Array(binary.length);
-  for (let i = 0; i < binary.length; i += 1) bytes[i] = binary.charCodeAt(i);
-  return new Blob([bytes], { type: mime });
+  const match = dataUrl.match(/^data:([^;,]+)?(;base64)?,(.*)$/s);
+  if (!match) throw new Error("The selected image is not a valid data URL.");
+
+  const mimeType = match[1] || "image/jpeg";
+  const body = match[3];
+  if (match[2]) {
+    const binary = atob(body);
+    const bytes = new Uint8Array(binary.length);
+    for (let i = 0; i < binary.length; i += 1) bytes[i] = binary.charCodeAt(i);
+    return new Blob([bytes], { type: mimeType });
+  }
+  return new Blob([decodeURIComponent(body)], { type: mimeType });
 }
 
 function asText(value: unknown): string {
   return typeof value === "string" ? value.trim() : "";
 }
 
-function asList(value: unknown): string[] {
-  if (!Array.isArray(value)) return [];
-  return value.filter((item): item is string => typeof item === "string" && item.trim().length > 0);
+function asList(value: unknown): unknown[] {
+  if (Array.isArray(value)) return value;
+  if (typeof value !== "string") return [];
+  try {
+    const parsed: unknown = JSON.parse(value);
+    return Array.isArray(parsed) ? parsed : [];
+  } catch {
+    return [];
+  }
+}
+
+function parseSuggestions(value: unknown): Suggestions {
+  if (value && typeof value === "object" && !Array.isArray(value)) {
+    return value as Suggestions;
+  }
+  if (typeof value === "string") {
+    try {
+      const parsed: unknown = JSON.parse(value);
+      if (parsed && typeof parsed === "object" && !Array.isArray(parsed)) {
+        return parsed as Suggestions;
+      }
+    } catch {
+      // Some old rows may contain non-JSON text; handled as an empty suggestion object.
+    }
+  }
+  return {};
 }
 
 function firstUrl(...values: unknown[]): string | null {
   for (const value of values) {
-    if (typeof value === "string" && /^https?:\/\//.test(value.trim())) return value.trim();
+    if (typeof value === "string" && /^https?:\/\//i.test(value.trim())) {
+      return value.trim();
+    }
     if (Array.isArray(value)) {
       const nested = firstUrl(...value);
+      if (nested) return nested;
+    }
+    if (value && typeof value === "object") {
+      const record = value as Record<string, unknown>;
+      const nested = firstUrl(record.url, record.publicUrl, record.public_url, record.href);
       if (nested) return nested;
     }
   }
   return null;
 }
 
-function parseSuggestions(value: unknown): unknown {
-  let parsed = value;
-  for (let attempt = 0; attempt < 2 && typeof parsed === "string"; attempt += 1) {
-    try {
-      parsed = JSON.parse(parsed);
-    } catch {
-      const normalized = String(parsed).replace(/\\n/g, "\n").replace(/\\"/g, '"');
-      if (normalized === parsed) break;
-      try {
-        parsed = JSON.parse(normalized);
-      } catch {
-        break;
-      }
-    }
-  }
-  return parsed;
-}
-
-function readSuggestions(value: unknown, fallback: string): JobResult {
-  const raw = parseSuggestions(value);
-  const suggestions = (raw && typeof raw === "object" ? raw : {}) as Suggestions;
+function readSuggestions(value: unknown, fallbackCaption: string, format: ContentFormat): JobResult {
+  const suggestions = parseSuggestions(value);
   const posters = asList(suggestions.poster_urls);
+  const genericUrl = firstUrl(
+    suggestions.image_url,
+    suggestions.output_url,
+    suggestions.video_url,
+    suggestions.video_image,
+    posters,
+  );
+
+  // Prefer the requested format-specific URL. Do not let feed_url win for a Story job.
+  const formatUrl = format === "story"
+    ? firstUrl(suggestions.story_url, suggestions.story_image)
+    : format === "video"
+      ? firstUrl(suggestions.video_url, suggestions.video_image, suggestions.story_url, suggestions.story_image)
+      : firstUrl(suggestions.feed_url, suggestions.feed_image);
+
   const captions = asList(suggestions.captions);
+  const videoCaptions = asList(suggestions.video_captions);
+  const caption = format === "story"
+    ? asText(suggestions.story_caption) || asText(suggestions.caption) || asText(suggestions.feed_caption)
+    : format === "video"
+      ? asText(suggestions.video_caption) || asText(suggestions.caption) || asText(suggestions.feed_caption) || asText(videoCaptions[0])
+      : asText(suggestions.feed_caption) || asText(suggestions.caption);
+
   return {
-    imageUrl: firstUrl(
-      suggestions.image_url,
-      suggestions.output_url,
-      suggestions.feed_url,
-      suggestions.story_url,
-      suggestions.video_url,
-      suggestions.feed_image,
-      suggestions.story_image,
-      posters[0],
-    ),
-    caption:
-      asText(suggestions.caption) ||
-      asText(suggestions.feed_caption) ||
-      asText(suggestions.story_caption) ||
-      asText(suggestions.video_caption) ||
-      asList(suggestions.video_captions)[0] ||
-      captions[0] ||
-      fallback,
+    imageUrl: formatUrl ?? genericUrl,
+    caption: caption || asText(captions[0]) || fallbackCaption,
     note: null,
   };
 }
 
-async function isReachable(url: string): Promise<boolean> {
-  try {
-    const response = await fetch(url, { method: "HEAD" });
-    return response.ok;
-  } catch {
-    return false;
-  }
+function formatFromAspectRatio(aspectRatio: string, options: GenerationOptions): ContentFormat {
+  if (options.videoCount > 0) return "video";
+  if (options.storyCount > 0) return "story";
+  if (options.postCount > 0) return "feed";
+  return aspectRatio === "9:16" ? "story" : "feed";
 }
 
-async function resolveGeneratedImage(
-  result: JobResult,
-  cfg: { url: string; key: string },
-  generatedAfter: string,
-): Promise<JobResult> {
-  if (result.imageUrl && (await isReachable(result.imageUrl))) return result;
-
-  const storage = createClient(cfg.url, cfg.key).storage.from("results");
-  const listed = await storage.list("", {
-    limit: 20,
-    sortBy: { column: "created_at", order: "desc" },
-    search: "generated-",
-  });
-  if (listed.error) throw new Error(`Could not find generated images: ${listed.error.message}`);
-  // A file is only a valid fallback if it was created after THIS job
-  // started — otherwise we'd risk picking up a previous job's output,
-  // which is exactly how a story request could end up showing a feed image.
-  // Compare actual timestamps, not raw strings: Supabase's created_at isn't
-  // guaranteed to use the same ISO format as JS's toISOString() (e.g.
-  // "+00:00" vs "Z", or extra digits of precision), so a plain string ">"
-  // comparison can silently exclude a file that's genuinely newer. A 5s
-  // buffer also absorbs minor clock drift between this browser and Supabase.
-  const cutoffMs = new Date(generatedAfter).getTime() - 5000;
-  const newest = listed.data
-    .filter((file) => file.name.startsWith("generated-") && /\.(jpe?g|png|webp)$/i.test(file.name))
-    .filter((file) => {
-      const createdMs = new Date(String(file.created_at)).getTime();
-      return Number.isFinite(createdMs) && createdMs > cutoffMs;
-    })
-    .sort((a, b) => new Date(String(b.created_at)).getTime() - new Date(String(a.created_at)).getTime())[0];
-
-  // If we still can't confirm a working image, don't hand back a stale or
-  // unreachable URL — null renders as "Waiting for a photo" instead of a
-  // broken image icon.
-  if (!newest) return { ...result, imageUrl: null };
-
-  return {
-    ...result,
-    imageUrl: `${cfg.url}/storage/v1/object/public/results/${encodeURIComponent(newest.name)}`,
-  };
+function addCacheBuster(url: string, jobId: string): string {
+  try {
+    const parsed = new URL(url);
+    parsed.searchParams.set("job", jobId);
+    return parsed.toString();
+  } catch {
+    return url;
+  }
 }
 
 export async function runJob(
   uploadDataUrl: string,
   caption: string,
   generationOptions: GenerationOptions,
-  { aspect_ratio }: { aspect_ratio: string },
+  { aspect_ratio: aspectRatio }: { aspect_ratio: string },
 ): Promise<JobResult> {
-  const cfg = config();
-  if (!cfg) {
-    throw new Error("On Vercel, set VITE_SUPABASE_URL and VITE_SUPABASE_PUBLISHABLE_KEY, then redeploy.");
-  }
-  const jobStartedAt = new Date().toISOString();
-  const db = createClient(cfg.url, cfg.key);
-  const path = `uploads/${crypto.randomUUID()}.jpg`;
-  const uploaded = await db.storage.from(BUCKET).upload(path, dataUrlToBlob(uploadDataUrl), {
-    contentType: "image/jpeg",
-    upsert: false,
-  });
-  if (uploaded.error) throw new Error(uploaded.error.message);
+  const config = getConfig();
+  const supabase = createClient(config.url, config.key);
+  const format = formatFromAspectRatio(aspectRatio, generationOptions);
+  const uploadPath = `uploads/${crypto.randomUUID()}.jpg`;
 
-  const originalUrl = `${cfg.url}/storage/v1/object/public/${BUCKET}/${path}`;
-  const inserted = await db
+  const upload = await supabase.storage
+    .from(UPLOAD_BUCKET)
+    .upload(uploadPath, dataUrlToBlob(uploadDataUrl), {
+      contentType: "image/jpeg",
+      upsert: false,
+    });
+
+  if (upload.error) throw new Error(`Could not upload the source image: ${upload.error.message}`);
+
+  const originalUrl = `${config.url}/storage/v1/object/public/${UPLOAD_BUCKET}/${uploadPath}`;
+  const insert = await supabase
     .from("photo_jobs")
     .insert({
-      original_path: path,
+      original_path: uploadPath,
       original_url: originalUrl,
-      aspect_ratio,
+      aspect_ratio: aspectRatio,
       prompt: generationOptions.customPrompt,
       caption,
       status: "pending",
@@ -204,20 +209,43 @@ export async function runJob(
     })
     .select("id")
     .single();
-  if (inserted.error) throw new Error(inserted.error.message);
 
-  const jobId = String(inserted.data.id);
-  const started = Date.now();
-  while (Date.now() - started < WAIT_MS) {
-    await new Promise((resolve) => setTimeout(resolve, 3000));
-    const row = await db.from("photo_jobs").select("*").eq("id", jobId).single();
-    if (row.error) throw new Error(row.error.message);
-    const status = String(row.data.status);
-    if (status === "failed") throw new Error(asText(row.data.error_message) || "n8n marked this job as failed.");
-    if (["completed", "complete", "done", "success"].includes(status)) {
-      const result = readSuggestions(row.data.suggestions ?? row.data, caption);
-      return resolveGeneratedImage(result, cfg, jobStartedAt);
+  if (insert.error) throw new Error(`Could not create the generation job: ${insert.error.message}`);
+  const jobId = String(insert.data.id);
+  const deadline = Date.now() + WAIT_MS;
+
+  while (Date.now() < deadline) {
+    await new Promise((resolve) => window.setTimeout(resolve, POLL_INTERVAL_MS));
+
+    const { data, error } = await supabase
+      .from("photo_jobs")
+      .select("id,status,suggestions,error_message")
+      .eq("id", jobId)
+      .single<JobRow>();
+
+    if (error) throw new Error(`Could not check generation status: ${error.message}`);
+    if (!data) throw new Error("The generation job disappeared from photo_jobs.");
+
+    const status = String(data.status ?? "").toLowerCase();
+    if (["failed", "error", "cancelled", "canceled"].includes(status)) {
+      throw new Error(asText(data.error_message) || "n8n marked this generation job as failed.");
+    }
+
+    if (["completed", "complete", "done", "success", "succeeded"].includes(status)) {
+      const result = readSuggestions(data.suggestions, caption, format);
+      if (!result.imageUrl) {
+        throw new Error(
+          `Job ${jobId} completed, but suggestions has no image URL for ${format}. Check the n8n Supabase update node.`,
+        );
+      }
+      // This only prevents browser caching. n8n must still write a unique file per job.
+      result.imageUrl = addCacheBuster(result.imageUrl, jobId);
+      return result;
     }
   }
-  throw new Error("Still waiting on n8n. Check that ngrok is running and the Supabase trigger uses that URL.");
+
+  throw new Error(
+    `Generation timed out after ${Math.round(WAIT_MS / 1000)} seconds. Job ID: ${jobId}. ` +
+    "The job is still pending/processing in Supabase; check the n8n execution and make sure its final update node sets photo_jobs.status to completed or failed.",
+  );
 }
