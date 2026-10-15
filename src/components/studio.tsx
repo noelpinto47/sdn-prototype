@@ -1,7 +1,7 @@
 import { useEffect, useState } from "react";
 import { useRef } from "react";
-import { Copy, Download, ImagePlus, Leaf, Loader2, RectangleVertical, Square, Video } from "lucide-react";
-import { runJob, type GenerationOptions, type JobResult } from "@/lib/jobs";
+import { Copy, Download, ImagePlus, Leaf, Loader2, RectangleVertical, RefreshCw, Square, Video } from "lucide-react";
+import { listGeneratedImages, runJob, type GeneratedImage, type GenerationOptions, type JobResult } from "@/lib/jobs";
 
 type Source = {
   name: string;
@@ -11,10 +11,20 @@ type Source = {
 
 type ContentType = "feed" | "story" | "video";
 type Lang = "nl" | "en";
+type ActiveTab = "generate" | "gallery";
 
 const translations = {
   nl: {
     brand: "Samen Duurzaam Nieuwegein",
+    tabGenerate: "Generate",
+    tabGallery: "Gallery",
+    galleryTitle: "Gegenereerde afbeeldingen",
+    gallerySubtitle: "Alle afbeeldingen die in de resultatenopslag zijn opgeslagen.",
+    galleryLoading: "Afbeeldingen laden…",
+    galleryEmpty: "Er zijn nog geen gegenereerde afbeeldingen.",
+    galleryError: "Kon de galerij niet laden.",
+    galleryRefresh: "Vernieuwen",
+    galleryOpen: "Open afbeelding",
     title: "Maak van één foto een kant-en-klare update.",
     subtitle: "Voeg een foto van een SDN-initiatief toe, kies een formaat en krijg iets dat je direct op sociale media kunt plaatsen.",
     sectionPhoto: "01 · Foto",
@@ -48,6 +58,15 @@ const translations = {
   },
   en: {
     brand: "Samen Duurzaam Nieuwegein",
+    tabGenerate: "Generate",
+    tabGallery: "Gallery",
+    galleryTitle: "Generated images",
+    gallerySubtitle: "All images saved in your results storage bucket.",
+    galleryLoading: "Loading images…",
+    galleryEmpty: "There are no generated images yet.",
+    galleryError: "Could not load the gallery.",
+    galleryRefresh: "Refresh",
+    galleryOpen: "Open image",
     title: "Turn one photo into a ready-to-post update.",
     subtitle: "Add a photo from an SDN initiative, pick a format, and get something you can post straight to social media.",
     sectionPhoto: "01 · Photo",
@@ -354,6 +373,11 @@ export function Studio() {
   const [videoCaption, setVideoCaption] = useState("");
   const [customPrompt, setCustomPrompt] = useState("");
   const [lang, setLang] = useState<Lang>("nl");
+  const [activeTab, setActiveTab] = useState<ActiveTab>("generate");
+  const [galleryImages, setGalleryImages] = useState<GeneratedImage[]>([]);
+  const [galleryBusy, setGalleryBusy] = useState(false);
+  const [galleryError, setGalleryError] = useState<string | null>(null);
+  const [galleryReloadKey, setGalleryReloadKey] = useState(0);
 
   const t = translations[lang];
 
@@ -374,6 +398,31 @@ export function Studio() {
       // ignore
     }
   }
+
+  useEffect(() => {
+    if (activeTab !== "gallery") return;
+
+    let cancelled = false;
+    setGalleryBusy(true);
+    setGalleryError(null);
+
+    void listGeneratedImages()
+      .then((images) => {
+        if (!cancelled) setGalleryImages(images);
+      })
+      .catch((err: unknown) => {
+        if (!cancelled) {
+          setGalleryError(err instanceof Error ? err.message : t.galleryError);
+        }
+      })
+      .finally(() => {
+        if (!cancelled) setGalleryBusy(false);
+      });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [activeTab, galleryReloadKey, lang]);
 
   async function onFile(file: File | undefined) {
     if (!file) return;
@@ -478,10 +527,40 @@ export function Studio() {
             </button>
           </div>
         </div>
-        <h1 className="font-display text-4xl leading-none text-ink sm:text-5xl">{t.title}</h1>
-        <p className="max-w-xl text-base leading-relaxed text-muted">{t.subtitle}</p>
+        <nav aria-label={lang === "nl" ? "Hoofdnavigatie" : "Main navigation"} className="flex w-fit rounded-full border border-line bg-paper p-1 text-sm font-medium">
+          <button
+            type="button"
+            role="tab"
+            aria-selected={activeTab === "generate"}
+            onClick={() => setActiveTab("generate")}
+            className={`rounded-full px-5 py-2 transition ${activeTab === "generate" ? "bg-emerald-600 text-white shadow-sm" : "text-muted hover:text-ink"}`}
+          >
+            {t.tabGenerate}
+          </button>
+          <button
+            type="button"
+            role="tab"
+            aria-selected={activeTab === "gallery"}
+            onClick={() => setActiveTab("gallery")}
+            className={`rounded-full px-5 py-2 transition ${activeTab === "gallery" ? "bg-emerald-600 text-white shadow-sm" : "text-muted hover:text-ink"}`}
+          >
+            {t.tabGallery}
+          </button>
+        </nav>
+        {activeTab === "generate" ? (
+          <>
+            <h1 className="font-display text-4xl leading-none text-ink sm:text-5xl">{t.title}</h1>
+            <p className="max-w-xl text-base leading-relaxed text-muted">{t.subtitle}</p>
+          </>
+        ) : (
+          <>
+            <h1 className="font-display text-4xl leading-none text-ink sm:text-5xl">{t.galleryTitle}</h1>
+            <p className="max-w-xl text-base leading-relaxed text-muted">{t.gallerySubtitle}</p>
+          </>
+        )}
       </header>
 
+      {activeTab === "generate" ? (
       <div className="grid items-start gap-5 lg:grid-cols-[minmax(0,19rem)_minmax(0,22rem)_minmax(0,1fr)]">
         <section className="flex flex-col gap-3 rounded-card border border-line bg-card p-4">
           <div>
@@ -626,6 +705,73 @@ export function Studio() {
           ) : null}
         </section>
       </div>
+      ) : (
+        <section aria-label={t.tabGallery} className="flex flex-col gap-4">
+          <div className="flex items-center justify-between gap-3">
+            <p className="text-xs font-medium tracking-[0.14em] text-emerald-700 uppercase">
+              {galleryImages.length} {lang === "nl" ? "afbeeldingen" : "images"}
+            </p>
+            <button
+              type="button"
+              onClick={() => setGalleryReloadKey((value) => value + 1)}
+              disabled={galleryBusy}
+              className="inline-flex h-10 items-center justify-center gap-2 rounded-full border border-line bg-card px-4 text-sm font-medium text-ink disabled:opacity-50"
+            >
+              <RefreshCw className={`size-4 ${galleryBusy ? "animate-spin" : ""}`} aria-hidden="true" />
+              {t.galleryRefresh}
+            </button>
+          </div>
+
+          {galleryBusy ? (
+            <div className="flex items-center gap-2 py-10 text-sm text-muted">
+              <Loader2 className="size-4 animate-spin" aria-hidden="true" />
+              {t.galleryLoading}
+            </div>
+          ) : galleryError ? (
+            <p role="alert" className="rounded-xl border border-line bg-card p-4 text-sm text-warn">
+              {t.galleryError} {galleryError}
+            </p>
+          ) : galleryImages.length === 0 ? (
+            <div className="rounded-card border border-line bg-card px-4 py-16 text-center text-sm text-muted">
+              {t.galleryEmpty}
+            </div>
+          ) : (
+            <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
+              {galleryImages.map((image) => (
+                <article key={image.path} className="flex min-w-0 flex-col gap-3 rounded-card border border-line bg-card p-3">
+                  <a href={image.url} target="_blank" rel="noreferrer" aria-label={`${t.galleryOpen}: ${image.name}`}>
+                    <img
+                      src={image.url}
+                      alt={image.name}
+                      loading="lazy"
+                      className="aspect-[4/3] w-full rounded-lg bg-paper object-contain"
+                    />
+                  </a>
+                  <div className="min-w-0">
+                    <p className="truncate text-sm font-medium text-ink" title={image.name}>{image.name}</p>
+                    {image.createdAt ? (
+                      <p className="mt-1 text-xs text-muted">
+                        {new Date(image.createdAt).toLocaleString(lang === "nl" ? "nl-NL" : "en-GB", {
+                          dateStyle: "medium",
+                          timeStyle: "short",
+                        })}
+                      </p>
+                    ) : null}
+                  </div>
+                  <a
+                    href={image.url}
+                    target="_blank"
+                    rel="noreferrer"
+                    className="inline-flex h-10 items-center justify-center rounded-full border border-line text-sm font-medium text-ink hover:bg-paper"
+                  >
+                    {t.galleryOpen}
+                  </a>
+                </article>
+              ))}
+            </div>
+          )}
+        </section>
+      )}
     </main>
   );
 }

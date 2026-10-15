@@ -6,6 +6,17 @@ export type JobResult = {
   note: string | null;
 };
 
+export type GeneratedImage = {
+  /** Full public URL of the image in the results bucket. */
+  url: string;
+  /** Object path inside the results bucket. */
+  path: string;
+  /** File name, without its parent folder. */
+  name: string;
+  /** Storage creation time, when provided by Supabase. */
+  createdAt: string | null;
+};
+
 export type GenerationOptions = {
   promptType: "redesign" | "keep_structure" | "new_from_reference";
   customPrompt: string;
@@ -42,9 +53,19 @@ type JobRow = {
   error_message?: unknown;
 };
 
+type StorageEntry = {
+  id: string | null;
+  name: string;
+  created_at?: string | null;
+  updated_at?: string | null;
+  metadata?: Record<string, unknown> | null;
+};
+
 const UPLOAD_BUCKET = "photos";
+const RESULTS_BUCKET = "results";
 const POLL_INTERVAL_MS = 2_000;
 const WAIT_MS = 180_000;
+const STORAGE_PAGE_SIZE = 100;
 
 function getConfig(): { url: string; key: string } {
   const env = import.meta.env as Record<string, string | undefined>;
@@ -58,6 +79,11 @@ function getConfig(): { url: string; key: string } {
   }
 
   return { url: url.replace(/\/$/, ""), key };
+}
+
+function createSupabaseClient() {
+  const config = getConfig();
+  return createClient(config.url, config.key);
 }
 
 function dataUrlToBlob(dataUrl: string): Blob {
@@ -173,6 +199,67 @@ function addCacheBuster(url: string, jobId: string): string {
   } catch {
     return url;
   }
+}
+
+/**
+ * Lists image files in the Supabase `results` bucket, including files in nested folders.
+ * The bucket must be public for its public URLs to display in the browser.
+ */
+export async function listGeneratedImages(): Promise<GeneratedImage[]> {
+  const supabase = createSupabaseClient();
+
+  async function listFolder(prefix: string): Promise<GeneratedImage[]> {
+    const entries: StorageEntry[] = [];
+    let offset = 0;
+
+    while (true) {
+      const { data, error } = await supabase.storage.from(RESULTS_BUCKET).list(prefix, {
+        limit: STORAGE_PAGE_SIZE,
+        offset,
+        sortBy: { column: "created_at", order: "desc" },
+      });
+
+      if (error) {
+        throw new Error(`Could not load images from Supabase Storage: ${error.message}`);
+      }
+
+      const page = (data ?? []) as StorageEntry[];
+      entries.push(...page);
+      if (page.length < STORAGE_PAGE_SIZE) break;
+      offset += page.length;
+    }
+
+    const folders = entries.filter((entry) => !entry.id && !entry.metadata && entry.name);
+    const files = entries.filter((entry) => Boolean(entry.id) && entry.name);
+    const images: GeneratedImage[] = files.flatMap((entry) => {
+      const path = prefix ? `${prefix}/${entry.name}` : entry.name;
+      const metadata = entry.metadata ?? {};
+      const mimeType = String(metadata.mimetype ?? metadata.contentType ?? "").toLowerCase();
+      const hasImageExtension = /\.(avif|bmp|gif|jpe?g|png|svg|tiff?|webp)$/i.test(entry.name);
+      if (!mimeType.startsWith("image/") && !hasImageExtension) return [];
+
+      const { data: publicUrlData } = supabase.storage.from(RESULTS_BUCKET).getPublicUrl(path);
+      return [{
+        url: publicUrlData.publicUrl,
+        path,
+        name: entry.name,
+        createdAt: entry.created_at ?? entry.updated_at ?? null,
+      }];
+    });
+
+    const nestedImages = await Promise.all(
+      folders.map((folder) => listFolder(prefix ? `${prefix}/${folder.name}` : folder.name)),
+    );
+
+    return images.concat(...nestedImages);
+  }
+
+  const images = await listFolder("");
+  return images.sort((a, b) => {
+    const aTime = a.createdAt ? Date.parse(a.createdAt) : 0;
+    const bTime = b.createdAt ? Date.parse(b.createdAt) : 0;
+    return bTime - aTime;
+  });
 }
 
 export async function runJob(
