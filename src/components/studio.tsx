@@ -99,13 +99,9 @@ function PostCard({
   label,
   ratio,
   image,
-  caption,
   fileName,
   tall,
-  editableCaption = false,
-  onCaptionChange,
   downloadable = true,
-  showCaption = true,
 }: {
   label: string;
   ratio: string;
@@ -166,17 +162,6 @@ function PostCard({
           <div className="flex h-full items-center justify-center px-4 text-center text-sm text-muted">Waiting for a photo</div>
         )}
       </div>
-      {showCaption && editableCaption ? (
-        <textarea
-          value={caption}
-          onChange={(event) => onCaptionChange?.(event.target.value)}
-          placeholder="Video caption will sit here."
-          rows={3}
-          className="min-h-20 resize-none rounded-lg border border-line bg-paper px-3 py-2 text-sm leading-relaxed text-ink outline-none"
-        />
-      ) : showCaption ? (
-        <p className="min-h-12 text-sm leading-relaxed text-ink">{caption || "Caption will sit here."}</p>
-      ) : null}
       {actionError ? <p className="text-xs leading-relaxed text-warn">{actionError}</p> : null}
       {downloadable ? (
         <div className="flex gap-2">
@@ -220,13 +205,41 @@ const aspectRatioByFormat: Record<ContentType, string> = {
   video: "9:16",
 };
 
+// Default prompts used whenever the custom-prompt box is left blank.
+// "feed" targets the 1:1 canvas; "story" targets the tall 9:16 canvas and
+// is also reused for video, since video shares that same 9:16 frame.
+const DEFAULT_PROMPTS: Record<"feed" | "story", string> = {
+  feed: "Create a fresh, modern Instagram feed poster variation based on the reference image. Keep the main event or campaign message, key text, date, time, and call-to-action clearly readable. Preserve the original brand colors, logo, and overall visual identity while allowing creative freedom in layout, photo treatment, and composition. Replace or recompose the background/photo with a new relevant scene that fits the theme. Experiment with text placement, graphic shapes, overlays, and hierarchy so the design feels updated but still professional and on-brand. Ensure all important text remains sharp and legible. Square 1:1 format, clean graphic design style, high visual quality, no watermarks.",
+  story: "Create a fresh, modern Instagram Story poster variation based on the reference image. Keep the main event or campaign message, key text, date, time, and call-to-action clearly readable. Preserve the original brand colors, logo, and overall visual identity while allowing creative freedom in layout, photo treatment, and composition. Replace or recompose the background/photo with a new relevant scene that fits the theme. Design for a tall 9:16 canvas: keep the logo and all essential text inside the safe centre area, clear of the very top and bottom of the frame where Instagram's own UI (profile bar, reply field, sticker tray) sits on top of the image. Use bold, large type and strong contrast so the message reads instantly while someone is tapping through stories. Experiment with text placement, graphic shapes, overlays, and hierarchy so the design feels updated but still professional and on-brand. Ensure all important text remains sharp and legible. Vertical 9:16 format, clean graphic design style, high visual quality, no watermarks.",
+};
+
+// A short style nudge appended to the default prompt so repeated runs
+// don't converge on the same layout. Only applied when falling back to
+// the default — a prompt the user actually typed is sent exactly as-is.
+const VARIATION_HINTS = [
+  "For this variation, try an asymmetric layout with the headline anchored to one side.",
+  "For this variation, try a bold color band or shape running behind the headline.",
+  "For this variation, try a circular badge or sticker element framing the date and time.",
+  "For this variation, try a full-bleed photo with a translucent color overlay behind the text block.",
+  "For this variation, try large stacked type for the headline with a thin rule line above the call-to-action.",
+  "For this variation, try a collage-style layout with two smaller photo panels instead of one large one.",
+];
+
+function promptFor(contentType: ContentType, customPrompt: string): string {
+  const trimmed = customPrompt.trim();
+  if (trimmed) return trimmed;
+  const formatKey = contentType === "feed" ? "feed" : "story";
+  const hint = VARIATION_HINTS[Math.floor(Math.random() * VARIATION_HINTS.length)];
+  return `${DEFAULT_PROMPTS[formatKey]} ${hint}`;
+}
+
 // Maps the simple Post / Story / Video choice onto the counts the job API
 // still expects. promptType is fixed since the redesign / keep-structure /
 // new-from-reference choice was removed from the UI for this prototype.
 function toGenerationOptions(contentType: ContentType, customPrompt: string): GenerationOptions {
   const base = {
     promptType: "redesign" as GenerationOptions["promptType"],
-    customPrompt,
+    customPrompt: promptFor(contentType, customPrompt),
     postCount: 0,
     storyCount: 0,
     videoCount: 0,
@@ -411,9 +424,9 @@ export function Studio() {
               <textarea
                 value={customPrompt}
                 onChange={(event) => setCustomPrompt(event.target.value)}
-                rows={3}
+                rows={8}
                 maxLength={1000}
-                placeholder="Mention anything SDN-specific the post should reflect, e.g. a tuincoach visit or a Repair Café."
+                placeholder="Leave blank to use the default SDN poster prompt for this format, with a fresh layout twist each time. Or write your own to override it."
                 className="resize-none rounded-xl border border-line bg-paper px-3 py-3 text-sm font-normal text-ink outline-none"
               />
             </div>
