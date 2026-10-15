@@ -10,6 +10,76 @@ type Source = {
 };
 
 type ContentType = "feed" | "story" | "video";
+type Lang = "nl" | "en";
+
+const translations = {
+  nl: {
+    brand: "Samen Duurzaam Nieuwegein",
+    title: "Maak van één foto een kant-en-klare update.",
+    subtitle: "Voeg een foto van een SDN-initiatief toe, kies een formaat en krijg iets dat je direct op sociale media kunt plaatsen.",
+    sectionPhoto: "01 · Foto",
+    photoHelp: "Voeg een foto van een SDN-evenement, project of initiatief toe.",
+    dropPhoto: "Sleep een foto hierheen of klik om te kiezen",
+    sectionFormat: "02 · Formaat",
+    formatHelp: "Kies waar dit naartoe gaat.",
+    formatPost: "Post",
+    formatStory: "Story",
+    formatVideo: "Video",
+    customPrompt: "Aangepaste prompt",
+    customPromptPlaceholder: "Laat leeg om de standaard SDN-posterprompt voor dit formaat te gebruiken, met elke keer een nieuwe lay-outtwist. Of schrijf je eigen prompt om deze te overschrijven.",
+    clear: "Wissen",
+    generate: "Genereer",
+    generating: "Bezig met genereren van",
+    progressHint: "Dit duurt meestal 15–30 seconden.",
+    sectionOutput: "03 · Resultaat",
+    outputHelp: "Je gegenereerde update verschijnt hier.",
+    feedPost: "Feedbericht",
+    story: "Story",
+    portraitVideo: "Staande video",
+    waitingPhoto: "Wachten op een foto",
+    copy: "Kopiëren",
+    copied: "Gekopieerd",
+    save: "Opslaan",
+    videoCaptionPlaceholder: "Videobijschrift komt hier.",
+    errorPhotoFile: "Gebruik een fotobestand.",
+    errorGenerate: "Kon de post niet genereren.",
+    errorCopy: "Kon deze afbeelding niet kopiëren.",
+    errorDownload: "Kon deze afbeelding niet downloaden.",
+  },
+  en: {
+    brand: "Samen Duurzaam Nieuwegein",
+    title: "Turn one photo into a ready-to-post update.",
+    subtitle: "Add a photo from an SDN initiative, pick a format, and get something you can post straight to social media.",
+    sectionPhoto: "01 · Photo",
+    photoHelp: "Add a photo from an SDN event, project, or initiative.",
+    dropPhoto: "Drop a photo, or click to choose one",
+    sectionFormat: "02 · Format",
+    formatHelp: "Choose where this is going.",
+    formatPost: "Post",
+    formatStory: "Story",
+    formatVideo: "Video",
+    customPrompt: "Custom prompt",
+    customPromptPlaceholder: "Leave blank to use the default SDN poster prompt for this format, with a fresh layout twist each time. Or write your own to override it.",
+    clear: "Clear",
+    generate: "Generate",
+    generating: "Generating",
+    progressHint: "This usually takes 15–30 seconds.",
+    sectionOutput: "03 · Output",
+    outputHelp: "Your generated update will appear here.",
+    feedPost: "Feed post",
+    story: "Story",
+    portraitVideo: "Portrait video",
+    waitingPhoto: "Waiting for a photo",
+    copy: "Copy",
+    copied: "Copied",
+    save: "Save",
+    videoCaptionPlaceholder: "Video caption will sit here.",
+    errorPhotoFile: "Use a photo file.",
+    errorGenerate: "Could not generate the post.",
+    errorCopy: "Could not copy this image.",
+    errorDownload: "Could not download this image.",
+  },
+} as const;
 
 function readFile(file: File): Promise<string> {
   return new Promise((resolve, reject) => {
@@ -65,7 +135,6 @@ async function saveImage(src: string, name: string) {
 
 async function copyImageToClipboard(src: string) {
   const blob = await fetchImageBlob(src);
-  // Clipboard image writes need png across browsers; convert if the source isn't already.
   const pngBlob = blob.type === "image/png" ? blob : await toPng(blob);
   await navigator.clipboard.write([new ClipboardItem({ "image/png": pngBlob })]);
 }
@@ -106,6 +175,7 @@ function PostCard({
   onCaptionChange,
   downloadable = true,
   showCaption = true,
+  t,
 }: {
   label: string;
   ratio: string;
@@ -117,6 +187,7 @@ function PostCard({
   onCaptionChange?: (caption: string) => void;
   downloadable?: boolean;
   showCaption?: boolean;
+  t: typeof translations.nl;
 }) {
   const [copied, setCopied] = useState(false);
   const [busyAction, setBusyAction] = useState<"copy" | "save" | null>(null);
@@ -131,7 +202,7 @@ function PostCard({
       setCopied(true);
       window.setTimeout(() => setCopied(false), 1400);
     } catch {
-      setActionError("Could not copy this image.");
+      setActionError(t.errorCopy);
     } finally {
       setBusyAction(null);
     }
@@ -144,7 +215,7 @@ function PostCard({
     try {
       await saveImage(image, fileName);
     } catch {
-      setActionError("Could not download this image.");
+      setActionError(t.errorDownload);
     } finally {
       setBusyAction(null);
     }
@@ -163,14 +234,14 @@ function PostCard({
         {image ? (
           <img src={image} alt="" className="h-full w-full rounded-md object-contain" />
         ) : (
-          <div className="flex h-full items-center justify-center px-4 text-center text-sm text-muted">Waiting for a photo</div>
+          <div className="flex h-full items-center justify-center px-4 text-center text-sm text-muted">{t.waitingPhoto}</div>
         )}
       </div>
       {showCaption && editableCaption ? (
         <textarea
           value={caption}
           onChange={(event) => onCaptionChange?.(event.target.value)}
-          placeholder="Video caption will sit here."
+          placeholder={t.videoCaptionPlaceholder}
           rows={3}
           className="min-h-20 resize-none rounded-lg border border-line bg-paper px-3 py-2 text-sm leading-relaxed text-ink outline-none"
         />
@@ -187,7 +258,7 @@ function PostCard({
             className="inline-flex h-11 flex-1 items-center justify-center gap-2 rounded-full border border-line bg-card text-sm font-medium text-ink disabled:opacity-40"
           >
             {busyAction === "copy" ? <Loader2 className="size-4 animate-spin" aria-hidden="true" /> : <Copy className="size-4" aria-hidden="true" />}
-            {copied ? "Copied" : "Copy"}
+            {copied ? t.copied : t.copy}
           </button>
           <button
             type="button"
@@ -196,7 +267,7 @@ function PostCard({
             className="inline-flex h-11 flex-1 items-center justify-center gap-2 rounded-full bg-ink text-sm font-medium text-paper disabled:opacity-40"
           >
             {busyAction === "save" ? <Loader2 className="size-4 animate-spin" aria-hidden="true" /> : <Download className="size-4" aria-hidden="true" />}
-            Save
+            {t.save}
           </button>
         </div>
       ) : null}
@@ -204,33 +275,23 @@ function PostCard({
   );
 }
 
-const formatOptions: { value: ContentType; label: string; icon: typeof Square }[] = [
-  { value: "feed", label: "Post", icon: Square },
-  { value: "story", label: "Story", icon: RectangleVertical },
-  { value: "video", label: "Video", icon: Video },
+const formatOptions: { value: ContentType; labelKey: keyof typeof translations.nl; icon: typeof Square }[] = [
+  { value: "feed", labelKey: "formatPost", icon: Square },
+  { value: "story", labelKey: "formatStory", icon: RectangleVertical },
+  { value: "video", labelKey: "formatVideo", icon: Video },
 ];
 
-// The output size each format should render at. Feed posts are square;
-// story and video are both tall 9:16. Sent as its own top-level
-// aspect_ratio field (see onGenerate below), matching the
-// photo_jobs.aspect_ratio column — not nested inside GenerationOptions.
 const aspectRatioByFormat: Record<ContentType, string> = {
   feed: "1:1",
   story: "9:16",
   video: "9:16",
 };
 
-// Default prompts used whenever the custom-prompt box is left blank.
-// "feed" targets the 1:1 canvas; "story" targets the tall 9:16 canvas and
-// is also reused for video, since video shares that same 9:16 frame.
 const DEFAULT_PROMPTS: Record<"feed" | "story", string> = {
   feed: "Create a fresh, modern Instagram feed poster variation based on the reference image. Keep the main event or campaign message, key text, date, time, and call-to-action clearly readable. Preserve the original brand colors, logo, and overall visual identity while allowing creative freedom in layout, photo treatment, and composition. Replace or recompose the background/photo with a new relevant scene that fits the theme. Leave a clear safe margin around all four edges of the canvas — no text, logo, badge, or graphic element should touch, crop against, or extend past the edge of the frame. Experiment with text placement, graphic shapes, overlays, and hierarchy so the design feels updated but still professional and on-brand. Ensure all important text remains sharp, fully within frame, and legible. Square 1:1 format, clean graphic design style, high visual quality, no watermarks.",
   story: "Create a fresh, modern Instagram Story poster variation based on the reference image. Keep the main event or campaign message, key text, date, time, and call-to-action clearly readable. Preserve the original brand colors, logo, and overall visual identity while allowing creative freedom in layout, photo treatment, and composition. Replace or recompose the background/photo with a new relevant scene that fits the theme. Design for a tall 9:16 canvas: keep the logo and all essential text inside the safe centre area, clear of the very top and bottom of the frame where Instagram's own UI (profile bar, reply field, sticker tray) sits on top of the image, and leave a clear safe margin on the left and right edges too — no text, logo, badge, or graphic element should touch, crop against, or extend past any edge of the frame. Use bold, large type and strong contrast so the message reads instantly while someone is tapping through stories. Experiment with text placement, graphic shapes, overlays, and hierarchy so the design feels updated but still professional and on-brand. Ensure all important text remains sharp, fully within frame, and legible. Vertical 9:16 format, clean graphic design style, high visual quality, no watermarks.",
 };
 
-// A short style nudge appended to the default prompt so repeated runs
-// don't converge on the same layout. Only applied when falling back to
-// the default — a prompt the user actually typed is sent exactly as-is.
 const VARIATION_HINTS = [
   "For this variation, try an asymmetric layout with the headline anchored to one side.",
   "For this variation, try a bold color band or shape running behind the headline.",
@@ -248,9 +309,6 @@ function promptFor(contentType: ContentType, customPrompt: string): string {
   return `${DEFAULT_PROMPTS[formatKey]} ${hint}`;
 }
 
-// Maps the simple Post / Story / Video choice onto the counts the job API
-// still expects. promptType is fixed since the redesign / keep-structure /
-// new-from-reference choice was removed from the UI for this prototype.
 function toGenerationOptions(contentType: ContentType, customPrompt: string): GenerationOptions {
   const base = {
     promptType: "redesign" as GenerationOptions["promptType"],
@@ -278,11 +336,32 @@ export function Studio() {
   const [resultFormat, setResultFormat] = useState<ContentType | null>(null);
   const [videoCaption, setVideoCaption] = useState("");
   const [customPrompt, setCustomPrompt] = useState("");
+  const [lang, setLang] = useState<Lang>("nl");
+
+  const t = translations[lang];
+
+  useEffect(() => {
+    try {
+      const saved = localStorage.getItem("sdn-lang");
+      if (saved === "nl" || saved === "en") setLang(saved);
+    } catch {
+      // ignore
+    }
+  }, []);
+
+  function switchLang(next: Lang) {
+    setLang(next);
+    try {
+      localStorage.setItem("sdn-lang", next);
+    } catch {
+      // ignore
+    }
+  }
 
   async function onFile(file: File | undefined) {
     if (!file) return;
     if (!file.type.startsWith("image/")) {
-      setError("Use a photo file.");
+      setError(t.errorPhotoFile);
       return;
     }
     setError(null);
@@ -326,9 +405,6 @@ export function Studio() {
     if (!source || busy) return;
     setBusy(true);
     setError(null);
-    // Clear whatever's currently shown right away, so the canvas goes empty
-    // (with the progress bar) instead of leaving a stale result on screen
-    // while the new one generates.
     setResult(null);
     setResultFormat(null);
     setVideoCaption("");
@@ -343,15 +419,12 @@ export function Studio() {
       setProgress(100);
       await new Promise((resolve) => window.setTimeout(resolve, 350));
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Could not generate the post.");
+      setError(err instanceof Error ? err.message : t.errorGenerate);
     } finally {
       setBusy(false);
     }
   }
 
-  // Only show a result under the format it was actually generated for —
-  // switching tabs without regenerating should never show a different
-  // format's image.
   const matchesCurrentFormat = resultFormat === contentType;
   const resultImage = matchesCurrentFormat ? (result?.imageUrl ?? null) : null;
   const resultCaption = matchesCurrentFormat ? (result?.caption ?? caption) : caption;
@@ -360,26 +433,43 @@ export function Studio() {
     if (!videoCaption && defaultVideoCaption) setVideoCaption(defaultVideoCaption);
   }, [defaultVideoCaption, videoCaption]);
 
-  const formatLabel = contentType === "feed" ? "post" : contentType === "story" ? "story" : "video";
+  const formatLabel =
+    contentType === "feed" ? t.formatPost.toLowerCase() : contentType === "story" ? t.formatStory.toLowerCase() : t.formatVideo.toLowerCase();
 
   return (
     <main className="mx-auto flex min-h-screen w-full max-w-6xl flex-col gap-8 px-4 py-8 sm:px-6">
       <header className="flex flex-col gap-2">
-        <p className="flex items-center gap-1.5 text-xs font-medium tracking-[0.18em] text-emerald-700 uppercase">
-          <Leaf className="size-3.5" aria-hidden="true" />
-          Samen Duurzaam Nieuwegein
-        </p>
-        <h1 className="font-display text-4xl leading-none text-ink sm:text-5xl">Turn one photo into a ready-to-post update.</h1>
-        <p className="max-w-xl text-base leading-relaxed text-muted">
-          Add a photo from an SDN initiative, pick a format, and get something you can post straight to social media.
-        </p>
+        <div className="flex items-center justify-between gap-4">
+          <p className="flex items-center gap-1.5 text-xs font-medium tracking-[0.18em] text-emerald-700 uppercase">
+            <Leaf className="size-3.5" aria-hidden="true" />
+            {t.brand}
+          </p>
+          <div className="flex rounded-full border border-line bg-paper p-0.5 text-xs font-medium">
+            <button
+              type="button"
+              onClick={() => switchLang("nl")}
+              className={`rounded-full px-3 py-1 transition ${lang === "nl" ? "bg-emerald-600 text-white" : "text-muted"}`}
+            >
+              NL
+            </button>
+            <button
+              type="button"
+              onClick={() => switchLang("en")}
+              className={`rounded-full px-3 py-1 transition ${lang === "en" ? "bg-emerald-600 text-white" : "text-muted"}`}
+            >
+              EN
+            </button>
+          </div>
+        </div>
+        <h1 className="font-display text-4xl leading-none text-ink sm:text-5xl">{t.title}</h1>
+        <p className="max-w-xl text-base leading-relaxed text-muted">{t.subtitle}</p>
       </header>
 
       <div className="grid items-start gap-5 lg:grid-cols-[minmax(0,19rem)_minmax(0,22rem)_minmax(0,1fr)]">
         <section className="flex flex-col gap-3 rounded-card border border-line bg-card p-4">
           <div>
-            <p className="text-xs font-medium tracking-[0.14em] text-emerald-700 uppercase">01 · Photo</p>
-            <p className="mt-1 text-sm text-muted">Add a photo from an SDN event, project, or initiative.</p>
+            <p className="text-xs font-medium tracking-[0.14em] text-emerald-700 uppercase">{t.sectionPhoto}</p>
+            <p className="mt-1 text-sm text-muted">{t.photoHelp}</p>
           </div>
           <button
             type="button"
@@ -396,7 +486,7 @@ export function Studio() {
             ) : (
               <ImagePlus className="size-7 text-emerald-700" aria-hidden="true" />
             )}
-            <span className="text-sm text-muted">{source ? source.name : "Drop a photo, or click to choose one"}</span>
+            <span className="text-sm text-muted">{source ? source.name : t.dropPhoto}</span>
           </button>
           <input
             ref={inputRef}
@@ -408,24 +498,13 @@ export function Studio() {
               event.target.value = "";
             }}
           />
-          {/* <label className="flex flex-col gap-2 text-sm font-medium text-ink">
-            Caption
-            <textarea
-              value={caption}
-              onChange={(event) => setCaption(event.target.value)}
-              rows={3}
-              maxLength={500}
-              placeholder="The line you would actually post."
-              className="resize-none rounded-xl border border-line bg-paper px-3 py-3 text-base font-normal text-ink outline-none"
-            />
-          </label> */}
         </section>
 
         <section className="flex flex-col gap-3 rounded-card border border-line bg-card p-4">
           <div className="flex flex-col gap-3">
             <div>
-              <p className="text-xs font-medium tracking-[0.14em] text-emerald-700 uppercase">02 · Format</p>
-              <p className="mt-1 text-sm text-muted">Choose where this is going.</p>
+              <p className="text-xs font-medium tracking-[0.14em] text-emerald-700 uppercase">{t.sectionFormat}</p>
+              <p className="mt-1 text-sm text-muted">{t.formatHelp}</p>
             </div>
             <div className="grid grid-cols-3 gap-1.5">
               {formatOptions.map((option) => {
@@ -433,6 +512,7 @@ export function Studio() {
                 const active = contentType === option.value;
                 return (
                   <button
+                    disabled={option.value === "video"}
                     key={option.value}
                     type="button"
                     onClick={() => setContentType(option.value)}
@@ -441,21 +521,20 @@ export function Studio() {
                     }`}
                   >
                     <Icon className="size-4" aria-hidden="true" />
-                    {option.label}
+                    {t[option.labelKey]}
                   </button>
                 );
               })}
             </div>
 
-            {/* Custom prompt section */}
             <div className="flex flex-col gap-2">
-              <p className="text-xs font-medium text-ink">Custom prompt</p>
+              <p className="text-xs font-medium text-ink">{t.customPrompt}</p>
               <textarea
                 value={customPrompt}
                 onChange={(event) => setCustomPrompt(event.target.value)}
-                rows={3}
+                rows={6}
                 maxLength={1000}
-                placeholder="Leave blank to use the default SDN poster prompt for this format, with a fresh layout twist each time. Or write your own to override it."
+                placeholder={t.customPromptPlaceholder}
                 className="resize-none rounded-xl border border-line bg-paper px-3 py-3 text-sm font-normal text-ink outline-none"
               />
             </div>
@@ -467,7 +546,7 @@ export function Studio() {
               disabled={!source && !result}
               className="inline-flex h-12 items-center justify-center rounded-full border border-line bg-card px-5 text-sm font-medium text-ink disabled:opacity-40"
             >
-              Clear
+              {t.clear}
             </button>
             <button
               type="button"
@@ -476,7 +555,7 @@ export function Studio() {
               className="inline-flex h-12 flex-1 items-center justify-center gap-2 rounded-full bg-emerald-600 px-5 text-sm font-semibold text-white disabled:opacity-40"
             >
               {busy ? <Loader2 className="size-4 animate-spin" aria-hidden="true" /> : null}
-              {busy ? `Generating ${formatLabel}…` : `Generate ${formatLabel}`}
+              {busy ? `${t.generating} ${formatLabel}…` : `${t.generate} ${formatLabel}`}
             </button>
           </div>
           {busy ? (
@@ -487,7 +566,7 @@ export function Studio() {
                   style={{ width: `${progress}%` }}
                 />
               </div>
-              <p className="text-xs text-muted">This usually takes 15–30 seconds.</p>
+              <p className="text-xs text-muted">{t.progressHint}</p>
             </div>
           ) : null}
           {error ? <p className="text-sm leading-relaxed text-warn">{error}</p> : null}
@@ -496,26 +575,27 @@ export function Studio() {
 
         <section className="flex min-w-0 flex-col gap-4">
           <div>
-            <p className="text-xs font-medium tracking-[0.14em] text-emerald-700 uppercase">03 · Output</p>
-            <p className="mt-1 text-sm text-muted">Your generated update will appear here.</p>
+            <p className="text-xs font-medium tracking-[0.14em] text-emerald-700 uppercase">{t.sectionOutput}</p>
+            <p className="mt-1 text-sm text-muted">{t.outputHelp}</p>
           </div>
           {contentType === "feed" ? (
-            <PostCard label="Feed post" ratio="1:1" image={resultImage} caption={resultCaption} fileName="sdn-feed-post.jpg" />
+            <PostCard label={t.feedPost} ratio="1:1" image={resultImage} caption={resultCaption} fileName="sdn-feed-post.jpg" t={t} />
           ) : null}
           {contentType === "story" ? (
             <PostCard
-              label="Story"
+              label={t.story}
               ratio="9:16"
               image={resultImage}
               caption=""
               fileName="sdn-story.jpg"
               tall
               showCaption={false}
+              t={t}
             />
           ) : null}
           {contentType === "video" ? (
             <PostCard
-              label="Portrait video"
+              label={t.portraitVideo}
               ratio="9:16"
               image={resultImage}
               caption={videoCaption}
@@ -524,6 +604,7 @@ export function Studio() {
               editableCaption
               onCaptionChange={setVideoCaption}
               downloadable={false}
+              t={t}
             />
           ) : null}
         </section>
